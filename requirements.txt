@@ -1,1 +1,5 @@
-
+aiogram==3.*
+Flask==3.*
+flask-cors==4.*
+requests==2.*
+psycopg2-binary==2.*
