@@ -35,7 +35,7 @@ _peak_online: int = 0
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8727272136:AAFrs1TtgXSeFO06RPnM7v_wd9CqSqPuRm0")
 MINI_APP_URL = os.getenv(
     "MINI_APP_URL",
-    "https://60b87888-4ae7-4ded-b993-3f081adf7fc6-00-1kn4gdey5puav.spock.replit.dev",
+    "https://nodelink-wgst.onrender.com",
 )
 
 DATABASE_URL = os.getenv(
