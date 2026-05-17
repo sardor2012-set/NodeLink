@@ -257,6 +257,53 @@ def finalize_event():
                 f"Награда: <b>+{prize} коинов</b> уже зачислена на баланс 🎉",
             )
 
+        # Broadcast event results to all users
+        winner_ids_set = {w["telegram_id"] for w in winners}
+
+        def _build_event_end_broadcast_text():
+            lines = ["<tg-emoji emoji-id=\"5217822164362739968\">👑</tg-emoji> <b>Еженедельный ивент завершён!</b>\n"]
+            if winners:
+                lines.append("<tg-emoji emoji-id=\"5217822164362739968\">🏆</tg-emoji> <b>Победители недели:</b>")
+                for idx, w in enumerate(winners):
+                    medal = MEDAL.get(idx + 1, "")
+                    nick = w["nick"] or w["first_name"] or w["username"] or str(w["telegram_id"])
+                    uname = f" (@{w['username']})" if w["username"] else ""
+                    lines.append(f"{medal} {nick}{uname} — {w['event_referral_count']} приглашений")
+            else:
+                lines.append("В этом ивенте никто не пригласил друзей.")
+            lines.append("")
+            lines.append("<tg-emoji emoji-id=\"5193018401810822951\">🎉</tg-emoji> <b>Новый ивент уже начался!</b> Приглашайте друзей и попадайте в топ!")
+            return "\n".join(lines)
+
+        broadcast_text = _build_event_end_broadcast_text()
+
+        try:
+            conn2 = get_db()
+            cur2 = conn2.cursor()
+            cur2.execute("SELECT telegram_id FROM users")
+            all_user_ids = [row[0] for row in cur2.fetchall()]
+            cur2.close()
+            conn2.close()
+        except Exception as db_err:
+            logger.error("finalize_event broadcast db error: %s", db_err)
+            all_user_ids = []
+
+        def _do_event_broadcast(user_ids, text):
+            for uid in user_ids:
+                try:
+                    send_telegram_message(uid, text)
+                    time.sleep(0.05)
+                except Exception as ex:
+                    logger.error("finalize_event broadcast error uid=%s: %s", uid, ex)
+
+        threading.Thread(
+            target=_do_event_broadcast,
+            args=(all_user_ids, broadcast_text),
+            daemon=True,
+        ).start()
+
+        logger.info("Event end broadcast started for %d users", len(all_user_ids))
+
     except Exception as e:
         logger.error("finalize_event error: %s", e)
 
@@ -514,6 +561,19 @@ def init_db():
             completed_at TIMESTAMPTZ DEFAULT NOW(),
             UNIQUE(user_id, task_id)
         )
+    """)
+
+    # Upsert built-in ad tasks
+    cur.execute("""
+        INSERT INTO tasks (id, name, reward, task_type, is_active)
+        VALUES
+            (901, 'Посмотрите видео и получите награду', 5, 'ad_reward', TRUE),
+            (902, 'Получите награду за один клик', 5, 'ad_popup', TRUE)
+        ON CONFLICT (id) DO UPDATE SET
+            name = EXCLUDED.name,
+            reward = EXCLUDED.reward,
+            task_type = EXCLUDED.task_type,
+            is_active = EXCLUDED.is_active
     """)
 
     # Sync product catalog — upsert by explicit ID so updates apply on every restart
@@ -2808,7 +2868,7 @@ def admin_create_task():
 
     if not name:
         return jsonify({"error": "name is required"}), 400
-    if task_type not in ("video", "subscription", "other"):
+    if task_type not in ("video", "subscription", "other", "ad_reward", "ad_popup"):
         return jsonify({"error": "invalid task_type"}), 400
     try:
         reward = int(reward)
