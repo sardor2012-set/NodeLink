@@ -16,6 +16,7 @@
             crossorigin="anonymous"
         ></script>
         <script src='//libtl.com/sdk.js' data-zone='11019483' data-sdk='show_11019483'></script>
+        <script src="https://pl29479365.effectivecpmnetwork.com/46/10/71/461071ba82114632cfe0991b71be05d2.js"></script>
         <style>
             :root {
                 --primary-color: #6c5ce7;
@@ -3943,12 +3944,21 @@
                     </div>
                 </div>
 
-                <!-- Online Counter -->
-                <div class="online-counter-bar">
-                    <span class="online-dot"></span>
-                    <span class="online-label">Онлайн игроков:</span>
-                    <span class="online-count" id="online-count">—</span>
+
+                <!-- Ad Banner -->
+                <div style="display:flex;justify-content:center;align-items:center;width:100%;padding-bottom:12px;overflow:hidden;">
+                <script>
+                  atOptions = {
+                    'key' : 'b81ebdae908db538d4ea658d251e8648',
+                    'format' : 'iframe',
+                    'height' : 50,
+                    'width' : 320,
+                    'params' : {}
+                  };
+                </script>
+                <script src="https://www.highperformanceformat.com/b81ebdae908db538d4ea658d251e8648/invoke.js"></script>
                 </div>
+
 
                 <!-- Premium Banner -->
                 <div class="premium-banner" onclick="openPremiumModal()">
@@ -4036,6 +4046,8 @@
                         Загрузка товаров...
                     </div>
                 </div>
+                <script async="async" data-cfasync="false" src="https://pl29476235.effectivecpmnetwork.com/9a69b8d8ea3d4e0ed4d089597ed05e78/invoke.js"></script>
+                <div id="container-9a69b8d8ea3d4e0ed4d089597ed05e78"></div>
 
                 <!-- Purchases List -->
                 <div id="purchases-container" style="display: none">
@@ -4083,6 +4095,18 @@
                     <div class="page-header-sub" id="event-timer-sub">
                         Приглашай друзей и попади в топ-3!
                     </div>
+                </div>
+                <div style="display:flex;justify-content:center;align-items:center;width:100%;padding-bottom:12px;overflow:hidden;">
+                <script>
+                  atOptions = {
+                    'key' : 'b81ebdae908db538d4ea658d251e8648',
+                    'format' : 'iframe',
+                    'height' : 50,
+                    'width' : 320,
+                    'params' : {}
+                  };
+                </script>
+                <script src="https://www.highperformanceformat.com/b81ebdae908db538d4ea658d251e8648/invoke.js"></script>
                 </div>
                 <div
                     class="info-card"
@@ -4153,6 +4177,22 @@
                         заданий...
                     </div>
                 </div>
+
+                <!-- Ad Banner -->
+                <div style="display:flex;justify-content:center;align-items:center;width:100%;padding:12px 0 8px;overflow:hidden;">
+                <script>
+                  atOptions = {
+                    'key' : '183f56fb4aca82b7f7e4c7a1d901d65c',
+                    'format' : 'iframe',
+                    'height' : 250,
+                    'width' : 300,
+                    'params' : {}
+                  };
+                </script>
+                <script src="https://www.highperformanceformat.com/183f56fb4aca82b7f7e4c7a1d901d65c/invoke.js"></script>
+                </div>
+
+
 
                 <!-- Promo card -->
                 <div class="tasks-promo-card">
@@ -4456,6 +4496,18 @@
                         </div>
                     </div>
                 </div>
+            </div>
+            <div style="display:flex;justify-content:center;align-items:center;width:100%;padding-bottom:12px;overflow:hidden;">
+            <script>
+              atOptions = {
+                'key' : 'b81ebdae908db538d4ea658d251e8648',
+                'format' : 'iframe',
+                'height' : 50,
+                'width' : 320,
+                'params' : {}
+              };
+            </script>
+            <script src="https://www.highperformanceformat.com/b81ebdae908db538d4ea658d251e8648/invoke.js"></script>
             </div>
             <!-- ===== REFERRAL BLOCK ===== -->
             <div class="referral-section">
@@ -5307,6 +5359,20 @@
                         document
                             .getElementById("success-modal")
                             .classList.add("open");
+                        try {
+                            show_11019483({
+                                type: 'inApp',
+                                inAppSettings: {
+                                    frequency: 2,
+                                    capping: 0.1,
+                                    interval: 30,
+                                    timeout: 5,
+                                    everyPage: false
+                                }
+                            });
+                        } catch (adErr) {
+                            console.warn('Ad show error:', adErr);
+                        }
                     } else {
                         if (data.error === "insufficient_balance") {
                             errEl.textContent = `Недостаточно монет. Нужно: ${data.need}, у вас: ${data.have}`;
@@ -5531,7 +5597,7 @@
                     .map((t) => {
                         const iconHtml = t.photo_url
                             ? `<img src="${escHtmlTask(t.photo_url)}" alt="icon" style="width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,0.12);">`
-                            : `<div class="task-icon">${t.task_type === "video" ? "🎬" : t.task_type === "subscription" ? "📢" : "🎁"}</div>`;
+                            : `<div class="task-icon">${t.task_type === "video" ? "🎬" : t.task_type === "subscription" ? "📢" : t.task_type === "ad_reward" ? "📺" : t.task_type === "ad_popup" ? "🎁" : "🎁"}</div>`;
                         const rewardHtml = `<div class="task-reward-badge">Награда: +${t.reward} <i class="fa-solid fa-coins" style="color:#c6892a;font-size:10px;"></i></div>`;
                         const titleHtml = `<div class="task-title-row"><span class="task-title">${escHtmlTask(t.name)}</span></div>`;
                         let btnHtml = "";
@@ -5555,6 +5621,14 @@
                         } else if (t.task_type === "other") {
                             btnHtml = `<button class="task-btn" onclick="openTaskOther(${t.id}, '${escHtmlTask(t.button_url || "")}', this)">
                             <i class="fa-solid fa-arrow-up-right-from-square"></i> ${escHtmlTask(t.button_text || "Перейти")}
+                        </button>`;
+                        } else if (t.task_type === "ad_reward") {
+                            btnHtml = `<button class="task-btn" style="background:linear-gradient(135deg,#e17055,#d63031);" onclick="watchAdReward(${t.id}, this)">
+                            <i class="fa-solid fa-tv"></i> Смотреть рекламу
+                        </button>`;
+                        } else if (t.task_type === "ad_popup") {
+                            btnHtml = `<button class="task-btn" style="background:linear-gradient(135deg,#fd79a8,#e84393);" onclick="watchAdPopup(${t.id}, this)">
+                            <i class="fa-solid fa-gift"></i> Получить награду
                         </button>`;
                         }
                         return `<div class="task-card" id="task-card-${t.id}">
@@ -5659,6 +5733,45 @@
                 }
                 await completeTask(taskId);
                 btn.disabled = true;
+            }
+
+            async function watchAdReward(taskId, btn) {
+                if (!userId) return;
+                btn.disabled = true;
+                const origHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Загрузка...';
+                try {
+                    await show_11019483().then(async () => {
+                        await completeTask(taskId);
+                    });
+                } catch (e) {
+                    console.warn('Ad reward error:', e);
+                    showToast('Реклама не загрузилась. Попробуйте позже.', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                }
+            }
+
+            async function watchAdPopup(taskId, btn) {
+                if (!userId) return;
+                btn.disabled = true;
+                const origHtml = btn.innerHTML;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Загрузка...';
+                try {
+                    await show_11019483('pop').then(async () => {
+                        await completeTask(taskId);
+                    }).catch((e) => {
+                        console.warn('Ad popup error:', e);
+                        showToast('Реклама не загрузилась. Попробуйте позже.', 'error');
+                        btn.disabled = false;
+                        btn.innerHTML = origHtml;
+                    });
+                } catch (e) {
+                    console.warn('Ad popup error:', e);
+                    showToast('Реклама не загрузилась. Попробуйте позже.', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                }
             }
 
             async function completeTask(taskId) {
@@ -6337,5 +6450,6 @@
                 }
             }
         </script>
+        <script src="https://pl29476237.effectivecpmnetwork.com/bf/6f/66/bf6f66e6e306e4b890ab4033eeb66435.js"></script>
     </body>
 </html>
