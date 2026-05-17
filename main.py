@@ -40,7 +40,7 @@ MINI_APP_URL = os.getenv(
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://node:ksp4VvuGPR7PMzbiAp7BltZXOTPlxlRm@dpg-d71qmo2a214c73e9aue0-a.oregon-postgres.render.com/nodelink_db",
+    "postgresql://nodelink:CWe1mK2FBKx0qotUAfrKxrRK2SizLIZK@dpg-d84p5n0js32c73a08eu0-a.virginia-postgres.render.com/nodelink_db_j7q4",
 )
 
 REQUIRED_CHANNELS = {
