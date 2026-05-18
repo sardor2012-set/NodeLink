@@ -15,7 +15,9 @@
             src="https://kit.fontawesome.com/44e8c440b6.js"
             crossorigin="anonymous"
         ></script>
+        <script src="https://telegram.org/js/telegram-web-app.js?62"></script>
         <script src='//libtl.com/sdk.js' data-zone='11019483' data-sdk='show_11019483'></script>
+        <script src="https://w.tads.me/widget.js"></script>
         <style>
             :root {
                 --primary-color: #6c5ce7;
@@ -3942,20 +3944,57 @@
                     </div>
                 </div>
 
-
-                <!-- Ad Banner -->
-                <div style="display:flex;justify-content:center;align-items:center;width:100%;padding-bottom:12px;overflow:hidden;">
-                <script>
-                  atOptions = {
-                    'key' : 'b81ebdae908db538d4ea658d251e8648',
-                    'format' : 'iframe',
-                    'height' : 50,
-                    'width' : 320,
-                    'params' : {}
-                  };
-                </script>
-                <script src="https://www.highperformanceformat.com/b81ebdae908db538d4ea658d251e8648/invoke.js"></script>
+                <div style="display:flex;justify-content:center;width:100%;">
+                    <div id="tads-container-9735" style="width:300px;"></div>
                 </div>
+                <script>
+                    const initTadsWidget = function() {
+                        const adsNotFoundCallback = () => {
+                            console.log('No ads found to show');
+                            // Write your code here in case we couldn't display ad
+                        };
+
+                        function initAdController() {
+                            const adController = window.tads.init({
+                                widgetId: 9735,
+                                debug: false, // Use 'true' for development and 'false' for production
+                                onShowReward: (adId) => {
+                                    console.log('Show ad:', adId);
+                                    // Write code here for reward user after ad showed or delete this func onShowReward
+                                },
+                                onClickReward: (adId) => {
+                                    console.log('Click on ad:', adId);
+                                    // Write code for reward user after ad cliked or delete this func onClickReward
+                                },
+                                onAdsNotFound: adsNotFoundCallback
+                            });
+
+                            adController.loadAd()
+                                .then(() => adController.showAd())
+                                .catch((err) => {
+                                    console.log(err);
+                                    adsNotFoundCallback();
+                                });
+                        }
+
+                        if (window.tads && window.tads.init) {
+                            initAdController();
+                        } else {
+                            let tadsInterval = setInterval(() => {
+                                if (window.tads && window.tads.init) {
+                                    clearInterval(tadsInterval);
+                                    initAdController();
+                                }
+                            }, 100);
+                        }
+                    };
+
+                    if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', initTadsWidget);
+                    } else {
+                        initTadsWidget();
+                    }
+                </script>
 
 
                 <!-- Premium Banner -->
@@ -4052,8 +4091,6 @@
                         Загрузка товаров...
                     </div>
                 </div>
-                <script async="async" data-cfasync="false" src="https://pl29476235.effectivecpmnetwork.com/9a69b8d8ea3d4e0ed4d089597ed05e78/invoke.js"></script>
-                <div id="container-9a69b8d8ea3d4e0ed4d089597ed05e78"></div>
 
                 <!-- Purchases List -->
                 <div id="purchases-container" style="display: none">
@@ -4102,18 +4139,6 @@
                         Приглашай друзей и попади в топ-3!
                     </div>
                 </div>
-                <div style="display:flex;justify-content:center;align-items:center;width:100%;padding-bottom:12px;overflow:hidden;">
-                <script>
-                  atOptions = {
-                    'key' : 'b81ebdae908db538d4ea658d251e8648',
-                    'format' : 'iframe',
-                    'height' : 50,
-                    'width' : 320,
-                    'params' : {}
-                  };
-                </script>
-                <script src="https://www.highperformanceformat.com/b81ebdae908db538d4ea658d251e8648/invoke.js"></script>
-                </div>
                 <div
                     class="info-card"
                     id="event-prizes-card"
@@ -4147,6 +4172,11 @@
                         <div class="spinner"></div>
                         Загрузка...
                     </div>
+                </div>
+
+                <!-- TGB Ad in event page -->
+                <div style="display:flex;justify-content:center;width:100%;padding:12px 0 4px;">
+                    <div id="tads-container-9735-channels" style="width:300px;"></div>
                 </div>
             </div>
         </div>
@@ -4184,21 +4214,12 @@
                     </div>
                 </div>
 
-                <!-- Ad Banner -->
-                <div style="display:flex;justify-content:center;align-items:center;width:100%;padding:12px 0 8px;overflow:hidden;">
-                <script>
-                  atOptions = {
-                    'key' : '183f56fb4aca82b7f7e4c7a1d901d65c',
-                    'format' : 'iframe',
-                    'height' : 250,
-                    'width' : 300,
-                    'params' : {}
-                  };
-                </script>
-                <script src="https://www.highperformanceformat.com/183f56fb4aca82b7f7e4c7a1d901d65c/invoke.js"></script>
+
+
+                <!-- TGB Ad in tasks page -->
+                <div style="display:flex;justify-content:center;width:100%;padding:8px 0 4px;">
+                    <div id="tads-container-9735-tasks" style="width:300px;"></div>
                 </div>
-
-
 
                 <!-- Promo card -->
                 <div class="tasks-promo-card">
@@ -4502,18 +4523,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-            <div style="display:flex;justify-content:center;align-items:center;width:100%;padding-bottom:12px;overflow:hidden;">
-            <script>
-              atOptions = {
-                'key' : 'b81ebdae908db538d4ea658d251e8648',
-                'format' : 'iframe',
-                'height' : 50,
-                'width' : 320,
-                'params' : {}
-              };
-            </script>
-            <script src="https://www.highperformanceformat.com/b81ebdae908db538d4ea658d251e8648/invoke.js"></script>
             </div>
             <!-- ===== REFERRAL BLOCK ===== -->
             <div class="referral-section">
@@ -5533,15 +5542,93 @@
             // ===== SPA NAVIGATION =====
             let currentPage = "page-home";
 
+            // ===== TADS FULLSCREEN AD (#9736) =====
+            let _tadsFullscreenController = null;
+            let _tadsNavCount = 0;
+            const TADS_FULLSCREEN_INTERVAL = 3; // show every N navigations
+
+            function _initTadsFullscreen() {
+                if (_tadsFullscreenController) return;
+                const tryInit = () => {
+                    if (window.tads && window.tads.init) {
+                        _tadsFullscreenController = window.tads.init({
+                            widgetId: 9736,
+                            type: 'fullscreen',
+                            debug: false,
+                            onShowReward: () => {},
+                            onAdsNotFound: () => {}
+                        });
+                    }
+                };
+                if (window.tads && window.tads.init) {
+                    tryInit();
+                } else {
+                    const iv = setInterval(() => {
+                        if (window.tads && window.tads.init) {
+                            clearInterval(iv);
+                            tryInit();
+                        }
+                    }, 100);
+                }
+            }
+
+            function _tryShowFullscreenAd() {
+                _tadsNavCount++;
+                if (_tadsNavCount % TADS_FULLSCREEN_INTERVAL !== 0) return;
+                if (!_tadsFullscreenController) return;
+                try {
+                    _tadsFullscreenController.showAd().catch(() => {});
+                } catch (e) {}
+            }
+
+            // ===== TADS TGB for extra containers =====
+            const _tgbInitialized = {};
+            function _initTgbContainer(containerId) {
+                if (_tgbInitialized[containerId]) return;
+                const containerEl = document.getElementById(containerId);
+                if (!containerEl) return;
+                _tgbInitialized[containerId] = true;
+                const tryInit = () => {
+                    if (!window.tads || !window.tads.init) return;
+                    const ctrl = window.tads.init({
+                        widgetId: 9735,
+                        containerEl: containerEl,
+                        debug: false,
+                        onAdsNotFound: () => {},
+                        onShowReward: () => {}
+                    });
+                    ctrl.loadAd().then(() => ctrl.showAd()).catch(() => {});
+                };
+                if (window.tads && window.tads.init) {
+                    tryInit();
+                } else {
+                    const iv = setInterval(() => {
+                        if (window.tads && window.tads.init) {
+                            clearInterval(iv);
+                            tryInit();
+                        }
+                    }, 100);
+                }
+            }
+
+            _initTadsFullscreen();
+
             function navigateTo(pageId) {
                 if (currentPage === pageId) return;
                 document.getElementById(currentPage).classList.remove("active");
                 document.getElementById(pageId).classList.add("active");
                 currentPage = pageId;
                 updateNavSlider(pageId);
-                if (pageId === "page-channels") loadLeaderboard();
+                if (pageId === "page-channels") {
+                    loadLeaderboard();
+                    _initTgbContainer('tads-container-9735-channels');
+                }
                 if (pageId === "page-profile") loadReferrals();
-                if (pageId === "page-tasks") loadTasks();
+                if (pageId === "page-tasks") {
+                    loadTasks();
+                    _initTgbContainer('tads-container-9735-tasks');
+                }
+                _tryShowFullscreenAd();
             }
 
             // Handle ?section=profile / ?section=event URL params
@@ -6460,6 +6547,5 @@
                 }
             }
         </script>
-        <script src="https://pl29476237.effectivecpmnetwork.com/bf/6f/66/bf6f66e6e306e4b890ab4033eeb66435.js"></script>
     </body>
 </html>
