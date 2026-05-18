@@ -582,8 +582,6 @@ def init_db():
     catalog = [
         # id, name, category, price, description, icon, color, sort_order
         # Коины — каждый в своём цвете
-        (101, "🌕 10 Коинов",   "currency", 10,  "Пополни баланс в HolyWorld на 10 коинов. Быстро и удобно.",                "fa-solid fa-coins", "green",  101),
-        (102, "🌕 15 Коинов",   "currency", 15,  "Пополни баланс в HolyWorld на 15 коинов.",                                  "fa-solid fa-coins", "teal",   102),
         (103, "🌕 25 Коинов",   "currency", 25,  "25 коинов на игровой счёт — начни тратить с выгодой!",                      "fa-solid fa-coins", "blue",   103),
         (104, "🌕 35 Коинов",   "currency", 35,  "35 коинов — отличный старт для новичка.",                                   "fa-solid fa-coins", "orange", 104),
         (105, "🌕 50 Коинов",   "currency", 45,  "50 коинов по выгодной цене. Экономия 10%!",                                 "fa-solid fa-coins", "yellow", 105),
