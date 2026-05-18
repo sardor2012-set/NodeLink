@@ -4035,6 +4035,14 @@
                     <button class="cat-tab" onclick="switchCategory('others')">
                         <i class="fa-brands fa-battle-net"></i> Прочие
                     </button>
+                    <div style="grid-column:1/-1;display:flex;gap:6px;justify-content:center;">
+                        <button class="cat-tab" onclick="switchCategory('stars')" style="width:calc((100% - 12px)/3);">
+                            <i class="fa-solid fa-star"></i> Звёзды
+                        </button>
+                        <button class="cat-tab" onclick="switchCategory('exchange')" style="width:calc((100% - 12px)/3);">
+                            <i class="fa-solid fa-arrow-right-arrow-left"></i> Обмен
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Products Grid -->
@@ -5019,6 +5027,8 @@
                     cases: 3,
                     sapphires: 4,
                     others: 5,
+                    stars: 6,
+                    exchange: 7,
                 };
                 if (catBtns[catMap[cat]])
                     catBtns[catMap[cat]].classList.add("active");
@@ -5034,6 +5044,8 @@
                     cases: "Кейсы",
                     sapphires: "Сапфиры",
                     others: "Прочие",
+                    stars: "Звёзды",
+                    exchange: "Обмен",
                 };
                 return m[cat] || cat;
             }
