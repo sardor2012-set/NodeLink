@@ -5542,42 +5542,26 @@
             // ===== SPA NAVIGATION =====
             let currentPage = "page-home";
 
-            // ===== TADS FULLSCREEN AD (#9736) =====
-            let _tadsFullscreenController = null;
-            let _tadsNavCount = 0;
-            const TADS_FULLSCREEN_INTERVAL = 3; // show every N navigations
+            // ===== IN-APP INTERSTITIAL (show_11019483) =====
+            let _navCount = 0;
+            const NAV_AD_INTERVAL = 3;
 
-            function _initTadsFullscreen() {
-                if (_tadsFullscreenController) return;
-                const tryInit = () => {
-                    if (window.tads && window.tads.init) {
-                        _tadsFullscreenController = window.tads.init({
-                            widgetId: 9736,
-                            type: 'fullscreen',
-                            debug: false,
-                            onShowReward: () => {},
-                            onAdsNotFound: () => {}
+            function _tryShowInAppAd() {
+                _navCount++;
+                if (_navCount % NAV_AD_INTERVAL !== 0) return;
+                try {
+                    if (typeof show_11019483 === 'function') {
+                        show_11019483({
+                            type: 'inApp',
+                            inAppSettings: {
+                                frequency: 2,
+                                capping: 0.1,
+                                interval: 30,
+                                timeout: 5,
+                                everyPage: false
+                            }
                         });
                     }
-                };
-                if (window.tads && window.tads.init) {
-                    tryInit();
-                } else {
-                    const iv = setInterval(() => {
-                        if (window.tads && window.tads.init) {
-                            clearInterval(iv);
-                            tryInit();
-                        }
-                    }, 100);
-                }
-            }
-
-            function _tryShowFullscreenAd() {
-                _tadsNavCount++;
-                if (_tadsNavCount % TADS_FULLSCREEN_INTERVAL !== 0) return;
-                if (!_tadsFullscreenController) return;
-                try {
-                    _tadsFullscreenController.showAd().catch(() => {});
                 } catch (e) {}
             }
 
@@ -5611,8 +5595,6 @@
                 }
             }
 
-            _initTadsFullscreen();
-
             function navigateTo(pageId) {
                 if (currentPage === pageId) return;
                 document.getElementById(currentPage).classList.remove("active");
@@ -5628,7 +5610,7 @@
                     loadTasks();
                     _initTgbContainer('tads-container-9735-tasks');
                 }
-                _tryShowFullscreenAd();
+                _tryShowInAppAd();
             }
 
             // Handle ?section=profile / ?section=event URL params
