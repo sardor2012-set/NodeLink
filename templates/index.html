@@ -4139,6 +4139,57 @@
                         Приглашай друзей и попади в топ-3!
                     </div>
                 </div>
+                                <div style="display:flex;justify-content:center;width:100%;">
+                    <div id="tads-container-9743" style="width:300px;"></div>
+                </div>
+                <script>
+                    const initTadsWidget = function() {
+                        const adsNotFoundCallback = () => {
+                            console.log('No ads found to show');
+                            // Write your code here in case we couldn't display ad
+                        };
+
+                        function initAdController() {
+                            const adController = window.tads.init({
+                                widgetId: 9743,
+                                debug: false, // Use 'true' for development and 'false' for production
+                                onShowReward: (adId) => {
+                                    console.log('Show ad:', adId);
+                                    // Write code here for reward user after ad showed or delete this func onShowReward
+                                },
+                                onClickReward: (adId) => {
+                                    console.log('Click on ad:', adId);
+                                    // Write code for reward user after ad cliked or delete this func onClickReward
+                                },
+                                onAdsNotFound: adsNotFoundCallback
+                            });
+
+                            adController.loadAd()
+                                .then(() => adController.showAd())
+                                .catch((err) => {
+                                    console.log(err);
+                                    adsNotFoundCallback();
+                                });
+                        }
+
+                        if (window.tads && window.tads.init) {
+                            initAdController();
+                        } else {
+                            let tadsInterval = setInterval(() => {
+                                if (window.tads && window.tads.init) {
+                                    clearInterval(tadsInterval);
+                                    initAdController();
+                                }
+                            }, 100);
+                        }
+                    };
+
+                    if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', initTadsWidget);
+                    } else {
+                        initTadsWidget();
+                    }
+                </script>
                 <div
                     class="info-card"
                     id="event-prizes-card"
@@ -4214,7 +4265,57 @@
                     </div>
                 </div>
 
+                                <div style="display:flex;justify-content:center;width:100%;">
+                    <div id="tads-container-9744" style="width:300px;"></div>
+                </div>
+                <script>
+                    const initTadsWidget = function() {
+                        const adsNotFoundCallback = () => {
+                            console.log('No ads found to show');
+                            // Write your code here in case we couldn't display ad
+                        };
 
+                        function initAdController() {
+                            const adController = window.tads.init({
+                                widgetId: 9744,
+                                debug: false, // Use 'true' for development and 'false' for production
+                                onShowReward: (adId) => {
+                                    console.log('Show ad:', adId);
+                                    // Write code here for reward user after ad showed or delete this func onShowReward
+                                },
+                                onClickReward: (adId) => {
+                                    console.log('Click on ad:', adId);
+                                    // Write code for reward user after ad cliked or delete this func onClickReward
+                                },
+                                onAdsNotFound: adsNotFoundCallback
+                            });
+
+                            adController.loadAd()
+                                .then(() => adController.showAd())
+                                .catch((err) => {
+                                    console.log(err);
+                                    adsNotFoundCallback();
+                                });
+                        }
+
+                        if (window.tads && window.tads.init) {
+                            initAdController();
+                        } else {
+                            let tadsInterval = setInterval(() => {
+                                if (window.tads && window.tads.init) {
+                                    clearInterval(tadsInterval);
+                                    initAdController();
+                                }
+                            }, 100);
+                        }
+                    };
+
+                    if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', initTadsWidget);
+                    } else {
+                        initTadsWidget();
+                    }
+                </script>
 
                 <!-- TGB Ad in tasks page -->
                 <div style="display:flex;justify-content:center;width:100%;padding:8px 0 4px;">
@@ -4524,6 +4625,57 @@
                     </div>
                 </div>
             </div>
+                            <div style="display:flex;justify-content:center;width:100%;">
+                    <div id="tads-container-9745" style="width:300px;"></div>
+                </div>
+                <script>
+                    const initTadsWidget = function() {
+                        const adsNotFoundCallback = () => {
+                            console.log('No ads found to show');
+                            // Write your code here in case we couldn't display ad
+                        };
+
+                        function initAdController() {
+                            const adController = window.tads.init({
+                                widgetId: 9745,
+                                debug: false, // Use 'true' for development and 'false' for production
+                                onShowReward: (adId) => {
+                                    console.log('Show ad:', adId);
+                                    // Write code here for reward user after ad showed or delete this func onShowReward
+                                },
+                                onClickReward: (adId) => {
+                                    console.log('Click on ad:', adId);
+                                    // Write code for reward user after ad cliked or delete this func onClickReward
+                                },
+                                onAdsNotFound: adsNotFoundCallback
+                            });
+
+                            adController.loadAd()
+                                .then(() => adController.showAd())
+                                .catch((err) => {
+                                    console.log(err);
+                                    adsNotFoundCallback();
+                                });
+                        }
+
+                        if (window.tads && window.tads.init) {
+                            initAdController();
+                        } else {
+                            let tadsInterval = setInterval(() => {
+                                if (window.tads && window.tads.init) {
+                                    clearInterval(tadsInterval);
+                                    initAdController();
+                                }
+                            }, 100);
+                        }
+                    };
+
+                    if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', initTadsWidget);
+                    } else {
+                        initTadsWidget();
+                    }
+                </script>
             <!-- ===== REFERRAL BLOCK ===== -->
             <div class="referral-section">
                 <div class="referral-card">
