@@ -16,8 +16,7 @@
             crossorigin="anonymous"
         ></script>
         <script src="https://telegram.org/js/telegram-web-app.js?62"></script>
-        <script src='//libtl.com/sdk.js' data-zone='11019483' data-sdk='show_11019483'></script>
-        <script src="https://w.tads.me/widget.js"></script>
+        <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
         <style>
             :root {
                 --primary-color: #6c5ce7;
@@ -3944,59 +3943,6 @@
                     </div>
                 </div>
 
-                <div style="display:flex;justify-content:center;width:100%;">
-                    <div id="tads-container-9735" style="width:300px;"></div>
-                </div>
-                <script>
-                    const initTadsWidget = function() {
-                        const adsNotFoundCallback = () => {
-                            console.log('No ads found to show');
-                            // Write your code here in case we couldn't display ad
-                        };
-
-                        function initAdController() {
-                            const adController = window.tads.init({
-                                widgetId: 9735,
-                                debug: false, // Use 'true' for development and 'false' for production
-                                onShowReward: (adId) => {
-                                    console.log('Show ad:', adId);
-                                    // Write code here for reward user after ad showed or delete this func onShowReward
-                                },
-                                onClickReward: (adId) => {
-                                    console.log('Click on ad:', adId);
-                                    // Write code for reward user after ad cliked or delete this func onClickReward
-                                },
-                                onAdsNotFound: adsNotFoundCallback
-                            });
-
-                            adController.loadAd()
-                                .then(() => adController.showAd())
-                                .catch((err) => {
-                                    console.log(err);
-                                    adsNotFoundCallback();
-                                });
-                        }
-
-                        if (window.tads && window.tads.init) {
-                            initAdController();
-                        } else {
-                            let tadsInterval = setInterval(() => {
-                                if (window.tads && window.tads.init) {
-                                    clearInterval(tadsInterval);
-                                    initAdController();
-                                }
-                            }, 100);
-                        }
-                    };
-
-                    if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', initTadsWidget);
-                    } else {
-                        initTadsWidget();
-                    }
-                </script>
-
-
                 <!-- Premium Banner -->
                 <div class="premium-banner" onclick="openPremiumModal()">
                     <div class="premium-banner-glow"></div>
@@ -4139,58 +4085,7 @@
                         Приглашай друзей и попади в топ-3!
                     </div>
                 </div>
-                                <div style="display:flex;justify-content:center;width:100%;">
-                    <div id="tads-container-9743" style="width:300px;"></div>
-                </div>
-                <script>
-                    const initTadsWidget = function() {
-                        const adsNotFoundCallback = () => {
-                            console.log('No ads found to show');
-                            // Write your code here in case we couldn't display ad
-                        };
-
-                        function initAdController() {
-                            const adController = window.tads.init({
-                                widgetId: 9743,
-                                debug: false, // Use 'true' for development and 'false' for production
-                                onShowReward: (adId) => {
-                                    console.log('Show ad:', adId);
-                                    // Write code here for reward user after ad showed or delete this func onShowReward
-                                },
-                                onClickReward: (adId) => {
-                                    console.log('Click on ad:', adId);
-                                    // Write code for reward user after ad cliked or delete this func onClickReward
-                                },
-                                onAdsNotFound: adsNotFoundCallback
-                            });
-
-                            adController.loadAd()
-                                .then(() => adController.showAd())
-                                .catch((err) => {
-                                    console.log(err);
-                                    adsNotFoundCallback();
-                                });
-                        }
-
-                        if (window.tads && window.tads.init) {
-                            initAdController();
-                        } else {
-                            let tadsInterval = setInterval(() => {
-                                if (window.tads && window.tads.init) {
-                                    clearInterval(tadsInterval);
-                                    initAdController();
-                                }
-                            }, 100);
-                        }
-                    };
-
-                    if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', initTadsWidget);
-                    } else {
-                        initTadsWidget();
-                    }
-                </script>
-                <div
+                                <div
                     class="info-card"
                     id="event-prizes-card"
                     style="margin-bottom: 12px; padding: 12px 16px"
@@ -4225,10 +4120,6 @@
                     </div>
                 </div>
 
-                <!-- TGB Ad in event page -->
-                <div style="display:flex;justify-content:center;width:100%;padding:12px 0 4px;">
-                    <div id="tads-container-9735-channels" style="width:300px;"></div>
-                </div>
             </div>
         </div>
 
@@ -4263,63 +4154,6 @@
                         <i class="fa-solid fa-spinner fa-spin"></i> Загрузка
                         заданий...
                     </div>
-                </div>
-
-                                <div style="display:flex;justify-content:center;width:100%;">
-                    <div id="tads-container-9744" style="width:300px;"></div>
-                </div>
-                <script>
-                    const initTadsWidget = function() {
-                        const adsNotFoundCallback = () => {
-                            console.log('No ads found to show');
-                            // Write your code here in case we couldn't display ad
-                        };
-
-                        function initAdController() {
-                            const adController = window.tads.init({
-                                widgetId: 9744,
-                                debug: false, // Use 'true' for development and 'false' for production
-                                onShowReward: (adId) => {
-                                    console.log('Show ad:', adId);
-                                    // Write code here for reward user after ad showed or delete this func onShowReward
-                                },
-                                onClickReward: (adId) => {
-                                    console.log('Click on ad:', adId);
-                                    // Write code for reward user after ad cliked or delete this func onClickReward
-                                },
-                                onAdsNotFound: adsNotFoundCallback
-                            });
-
-                            adController.loadAd()
-                                .then(() => adController.showAd())
-                                .catch((err) => {
-                                    console.log(err);
-                                    adsNotFoundCallback();
-                                });
-                        }
-
-                        if (window.tads && window.tads.init) {
-                            initAdController();
-                        } else {
-                            let tadsInterval = setInterval(() => {
-                                if (window.tads && window.tads.init) {
-                                    clearInterval(tadsInterval);
-                                    initAdController();
-                                }
-                            }, 100);
-                        }
-                    };
-
-                    if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', initTadsWidget);
-                    } else {
-                        initTadsWidget();
-                    }
-                </script>
-
-                <!-- TGB Ad in tasks page -->
-                <div style="display:flex;justify-content:center;width:100%;padding:8px 0 4px;">
-                    <div id="tads-container-9735-tasks" style="width:300px;"></div>
                 </div>
 
                 <!-- Promo card -->
@@ -4625,57 +4459,6 @@
                     </div>
                 </div>
             </div>
-                            <div style="display:flex;justify-content:center;width:100%;">
-                    <div id="tads-container-9745" style="width:300px;"></div>
-                </div>
-                <script>
-                    const initTadsWidget = function() {
-                        const adsNotFoundCallback = () => {
-                            console.log('No ads found to show');
-                            // Write your code here in case we couldn't display ad
-                        };
-
-                        function initAdController() {
-                            const adController = window.tads.init({
-                                widgetId: 9745,
-                                debug: false, // Use 'true' for development and 'false' for production
-                                onShowReward: (adId) => {
-                                    console.log('Show ad:', adId);
-                                    // Write code here for reward user after ad showed or delete this func onShowReward
-                                },
-                                onClickReward: (adId) => {
-                                    console.log('Click on ad:', adId);
-                                    // Write code for reward user after ad cliked or delete this func onClickReward
-                                },
-                                onAdsNotFound: adsNotFoundCallback
-                            });
-
-                            adController.loadAd()
-                                .then(() => adController.showAd())
-                                .catch((err) => {
-                                    console.log(err);
-                                    adsNotFoundCallback();
-                                });
-                        }
-
-                        if (window.tads && window.tads.init) {
-                            initAdController();
-                        } else {
-                            let tadsInterval = setInterval(() => {
-                                if (window.tads && window.tads.init) {
-                                    clearInterval(tadsInterval);
-                                    initAdController();
-                                }
-                            }, 100);
-                        }
-                    };
-
-                    if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', initTadsWidget);
-                    } else {
-                        initTadsWidget();
-                    }
-                </script>
             <!-- ===== REFERRAL BLOCK ===== -->
             <div class="referral-section">
                 <div class="referral-card">
@@ -5531,16 +5314,7 @@
                             .getElementById("success-modal")
                             .classList.add("open");
                         try {
-                            show_11019483({
-                                type: 'inApp',
-                                inAppSettings: {
-                                    frequency: 2,
-                                    capping: 0.1,
-                                    interval: 30,
-                                    timeout: 5,
-                                    everyPage: false
-                                }
-                            });
+                            AdsgramController.show().catch(() => {});
                         } catch (adErr) {
                             console.warn('Ad show error:', adErr);
                         }
@@ -5694,56 +5468,23 @@
             // ===== SPA NAVIGATION =====
             let currentPage = "page-home";
 
-            // ===== IN-APP INTERSTITIAL (show_11019483) =====
+            // ===== ADSGRAM INTERSTITIAL =====
+            let AdsgramController = null;
             let _navCount = 0;
             const NAV_AD_INTERVAL = 3;
+
+            function _initAdsgram() {
+                if (window.Adsgram && !AdsgramController) {
+                    AdsgramController = window.Adsgram.init({ blockId: "int-30697" });
+                }
+            }
 
             function _tryShowInAppAd() {
                 _navCount++;
                 if (_navCount % NAV_AD_INTERVAL !== 0) return;
-                try {
-                    if (typeof show_11019483 === 'function') {
-                        show_11019483({
-                            type: 'inApp',
-                            inAppSettings: {
-                                frequency: 2,
-                                capping: 0.1,
-                                interval: 30,
-                                timeout: 5,
-                                everyPage: false
-                            }
-                        });
-                    }
-                } catch (e) {}
-            }
-
-            // ===== TADS TGB for extra containers =====
-            const _tgbInitialized = {};
-            function _initTgbContainer(containerId) {
-                if (_tgbInitialized[containerId]) return;
-                const containerEl = document.getElementById(containerId);
-                if (!containerEl) return;
-                _tgbInitialized[containerId] = true;
-                const tryInit = () => {
-                    if (!window.tads || !window.tads.init) return;
-                    const ctrl = window.tads.init({
-                        widgetId: 9735,
-                        containerEl: containerEl,
-                        debug: false,
-                        onAdsNotFound: () => {},
-                        onShowReward: () => {}
-                    });
-                    ctrl.loadAd().then(() => ctrl.showAd()).catch(() => {});
-                };
-                if (window.tads && window.tads.init) {
-                    tryInit();
-                } else {
-                    const iv = setInterval(() => {
-                        if (window.tads && window.tads.init) {
-                            clearInterval(iv);
-                            tryInit();
-                        }
-                    }, 100);
+                _initAdsgram();
+                if (AdsgramController) {
+                    AdsgramController.show().catch(() => {});
                 }
             }
 
@@ -5753,15 +5494,9 @@
                 document.getElementById(pageId).classList.add("active");
                 currentPage = pageId;
                 updateNavSlider(pageId);
-                if (pageId === "page-channels") {
-                    loadLeaderboard();
-                    _initTgbContainer('tads-container-9735-channels');
-                }
+                if (pageId === "page-channels") loadLeaderboard();
                 if (pageId === "page-profile") loadReferrals();
-                if (pageId === "page-tasks") {
-                    loadTasks();
-                    _initTgbContainer('tads-container-9735-tasks');
-                }
+                if (pageId === "page-tasks") loadTasks();
                 _tryShowInAppAd();
             }
 
@@ -5971,10 +5706,16 @@
                 btn.disabled = true;
                 const origHtml = btn.innerHTML;
                 btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Загрузка...';
+                _initAdsgram();
+                if (!AdsgramController) {
+                    showToast('Реклама не загрузилась. Попробуйте позже.', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    return;
+                }
                 try {
-                    await show_11019483().then(async () => {
-                        await completeTask(taskId);
-                    });
+                    await AdsgramController.show();
+                    await completeTask(taskId);
                 } catch (e) {
                     console.warn('Ad reward error:', e);
                     showToast('Реклама не загрузилась. Попробуйте позже.', 'error');
@@ -5988,15 +5729,16 @@
                 btn.disabled = true;
                 const origHtml = btn.innerHTML;
                 btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Загрузка...';
+                _initAdsgram();
+                if (!AdsgramController) {
+                    showToast('Реклама не загрузилась. Попробуйте позже.', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                    return;
+                }
                 try {
-                    await show_11019483('pop').then(async () => {
-                        await completeTask(taskId);
-                    }).catch((e) => {
-                        console.warn('Ad popup error:', e);
-                        showToast('Реклама не загрузилась. Попробуйте позже.', 'error');
-                        btn.disabled = false;
-                        btn.innerHTML = origHtml;
-                    });
+                    await AdsgramController.show();
+                    await completeTask(taskId);
                 } catch (e) {
                     console.warn('Ad popup error:', e);
                     showToast('Реклама не загрузилась. Попробуйте позже.', 'error');
