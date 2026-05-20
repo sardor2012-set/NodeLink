@@ -1817,6 +1817,7 @@
                     <option value="video">Видео</option>
                     <option value="subscription">Подписка</option>
                     <option value="other">Другое</option>
+                    <option value="ad_reward">📺 Реклама (Adsgram Reward)</option>
                 </select>
             </div>
 
@@ -1846,6 +1847,15 @@
                 <div class="form-group">
                     <label class="form-label"><i class="fa-solid fa-link" style="color:#00cec9"></i> Ссылка кнопки</label>
                     <input type="text" class="form-input" id="task-btn-url-input" placeholder="https://...">
+                </div>
+            </div>
+
+            <!-- Ad Reward fields -->
+            <div id="task-ad-fields" style="display:none;">
+                <div class="form-group">
+                    <label class="form-label"><i class="fa-solid fa-rectangle-ad" style="color:#e17055"></i> Block ID Adsgram (Reward)</label>
+                    <input type="text" class="form-input" id="task-ad-block-id-input" placeholder="Например: rew-12345">
+                    <div style="font-size:0.78em;color:#888;margin-top:5px;"><i class="fa-solid fa-info-circle"></i> Создайте блок типа <b>Reward</b> на <a href="https://partner.adsgram.ai" target="_blank" style="color:#6c5ce7;">partner.adsgram.ai</a> и вставьте его ID сюда</div>
                 </div>
             </div>
 
@@ -3192,9 +3202,9 @@
             }
         }
 
-        const TASK_TYPE_LABELS = { video: 'Видео', subscription: 'Подписка', other: 'Другое' };
-        const TASK_TYPE_COLORS = { video: '#e17055', subscription: '#0984e3', other: '#6c5ce7' };
-        const TASK_TYPE_ICONS = { video: 'fa-play', subscription: 'fa-paper-plane', other: 'fa-arrow-up-right-from-square' };
+        const TASK_TYPE_LABELS = { video: 'Видео', subscription: 'Подписка', other: 'Другое', ad_reward: 'Реклама (Reward)' };
+        const TASK_TYPE_COLORS = { video: '#e17055', subscription: '#0984e3', other: '#6c5ce7', ad_reward: '#d63031' };
+        const TASK_TYPE_ICONS = { video: 'fa-play', subscription: 'fa-paper-plane', other: 'fa-arrow-up-right-from-square', ad_reward: 'fa-tv' };
 
         function renderAdminTasks(tasks) {
             const list = document.getElementById('admin-tasks-list');
@@ -3213,6 +3223,8 @@
                     detailHtml = `<div style="font-size:0.8em;color:#888;margin-top:4px;"><i class="fa-brands fa-telegram" style="margin-right:4px;color:#0984e3;"></i>${escHtml(t.channel_link)}</div>`;
                 } else if (t.task_type === 'other') {
                     detailHtml = `<div style="font-size:0.8em;color:#888;margin-top:4px;"><i class="fa-solid fa-pen" style="margin-right:4px;"></i>${escHtml(t.button_text || '')} → <a href="${escHtml(t.button_url || '')}" target="_blank" style="color:#0984e3;text-decoration:none;">${escHtml(t.button_url || '')}</a></div>`;
+                } else if (t.task_type === 'ad_reward' && t.button_url) {
+                    detailHtml = `<div style="font-size:0.8em;color:#888;margin-top:4px;"><i class="fa-solid fa-rectangle-ad" style="margin-right:4px;color:#d63031;"></i>Block ID: <b>${escHtml(t.button_url)}</b></div>`;
                 }
                 const photoHtml = t.photo_url
                     ? `<img src="${escHtml(t.photo_url)}" alt="photo" style="width:42px;height:42px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
@@ -3251,6 +3263,7 @@
             document.getElementById('task-channel-input').value = '';
             document.getElementById('task-btn-text-input').value = '';
             document.getElementById('task-btn-url-input').value = '';
+            document.getElementById('task-ad-block-id-input').value = '';
             document.getElementById('task-create-error').style.display = 'none';
             onTaskTypeChange('video');
             document.getElementById('add-task-modal').classList.add('open');
@@ -3268,6 +3281,7 @@
             document.getElementById('task-video-fields').style.display = val === 'video' ? 'block' : 'none';
             document.getElementById('task-sub-fields').style.display = val === 'subscription' ? 'block' : 'none';
             document.getElementById('task-other-fields').style.display = val === 'other' ? 'block' : 'none';
+            document.getElementById('task-ad-fields').style.display = val === 'ad_reward' ? 'block' : 'none';
         }
 
         async function doCreateTask() {
@@ -3279,6 +3293,7 @@
             const channelLink = document.getElementById('task-channel-input').value.trim();
             const buttonText = document.getElementById('task-btn-text-input').value.trim();
             const buttonUrl = document.getElementById('task-btn-url-input').value.trim();
+            const adBlockId = document.getElementById('task-ad-block-id-input').value.trim();
             const errEl = document.getElementById('task-create-error');
 
             if (!name) { errEl.textContent = 'Введите имя задания.'; errEl.style.display = 'block'; return; }
@@ -3286,11 +3301,15 @@
             if (taskType === 'video' && !videoUrl) { errEl.textContent = 'Укажите ссылку на видео.'; errEl.style.display = 'block'; return; }
             if (taskType === 'subscription' && !channelLink) { errEl.textContent = 'Укажите ссылку на канал.'; errEl.style.display = 'block'; return; }
             if (taskType === 'other' && (!buttonText || !buttonUrl)) { errEl.textContent = 'Укажите текст и ссылку кнопки.'; errEl.style.display = 'block'; return; }
+            if (taskType === 'ad_reward' && !adBlockId) { errEl.textContent = 'Укажите Block ID из Adsgram.'; errEl.style.display = 'block'; return; }
 
             errEl.style.display = 'none';
             const btn = document.getElementById('task-create-btn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Создание...';
+
+            // For ad_reward, store block ID in button_url field
+            const finalButtonUrl = taskType === 'ad_reward' ? adBlockId : buttonUrl;
 
             try {
                 const res = await fetch('/api/admin/tasks/create', {
@@ -3300,7 +3319,7 @@
                         admin_id: Number(adminId),
                         name, photo_url: photoUrl, reward, task_type: taskType,
                         video_url: videoUrl, channel_link: channelLink,
-                        button_text: buttonText, button_url: buttonUrl
+                        button_text: buttonText, button_url: finalButtonUrl
                     })
                 });
                 const d = await res.json();
