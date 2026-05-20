@@ -2877,7 +2877,7 @@ def admin_create_task():
 
     if not name:
         return jsonify({"error": "name is required"}), 400
-    if task_type not in ("video", "subscription", "other", "ad_reward", "ad_popup"):
+    if task_type not in ("video", "subscription", "other", "ad_reward", "ad_popup", "ad_task"):
         return jsonify({"error": "invalid task_type"}), 400
     try:
         reward = int(reward)
