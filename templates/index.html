@@ -5470,8 +5470,6 @@
 
             // ===== ADSGRAM INTERSTITIAL =====
             let AdsgramController = null;
-            let _navCount = 0;
-            const NAV_AD_INTERVAL = 3;
 
             function _initAdsgram() {
                 if (window.Adsgram && !AdsgramController) {
@@ -5480,13 +5478,14 @@
             }
 
             function _tryShowInAppAd() {
-                _navCount++;
-                if (_navCount % NAV_AD_INTERVAL !== 0) return;
                 _initAdsgram();
                 if (AdsgramController) {
                     AdsgramController.show().catch(() => {});
                 }
             }
+
+            // Show interstitial every 5 minutes
+            setInterval(_tryShowInAppAd, 5 * 60 * 1000);
 
             function navigateTo(pageId) {
                 if (currentPage === pageId) return;
@@ -5497,7 +5496,6 @@
                 if (pageId === "page-channels") loadLeaderboard();
                 if (pageId === "page-profile") loadReferrals();
                 if (pageId === "page-tasks") loadTasks();
-                _tryShowInAppAd();
             }
 
             // Handle ?section=profile / ?section=event URL params
@@ -5589,7 +5587,8 @@
                             <i class="fa-solid fa-arrow-up-right-from-square"></i> ${escHtmlTask(t.button_text || "Перейти")}
                         </button>`;
                         } else if (t.task_type === "ad_reward") {
-                            btnHtml = `<button class="task-btn" style="background:linear-gradient(135deg,#e17055,#d63031);" onclick="watchAdReward(${t.id}, this)">
+                            const blockId = escHtmlTask(t.button_url || "");
+                            btnHtml = `<button class="task-btn" style="background:linear-gradient(135deg,#e17055,#d63031);" onclick="watchAdReward(${t.id}, this, '${blockId}')">
                             <i class="fa-solid fa-tv"></i> Смотреть рекламу
                         </button>`;
                         } else if (t.task_type === "ad_popup") {
@@ -5701,20 +5700,20 @@
                 btn.disabled = true;
             }
 
-            async function watchAdReward(taskId, btn) {
+            async function watchAdReward(taskId, btn, blockId) {
                 if (!userId) return;
                 btn.disabled = true;
                 const origHtml = btn.innerHTML;
                 btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Загрузка...';
-                _initAdsgram();
-                if (!AdsgramController) {
+                if (!blockId || !window.Adsgram) {
                     showToast('Реклама не загрузилась. Попробуйте позже.', 'error');
                     btn.disabled = false;
                     btn.innerHTML = origHtml;
                     return;
                 }
+                const ctrl = window.Adsgram.init({ blockId: blockId });
                 try {
-                    await AdsgramController.show();
+                    await ctrl.show();
                     await completeTask(taskId);
                 } catch (e) {
                     console.warn('Ad reward error:', e);
