@@ -5561,7 +5561,7 @@
                     .map((t) => {
                         const iconHtml = t.photo_url
                             ? `<img src="${escHtmlTask(t.photo_url)}" alt="icon" style="width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,0.12);">`
-                            : `<div class="task-icon">${t.task_type === "video" ? "🎬" : t.task_type === "subscription" ? "📢" : t.task_type === "ad_reward" ? "📺" : t.task_type === "ad_popup" ? "🎁" : "🎁"}</div>`;
+                            : `<div class="task-icon">${t.task_type === "video" ? "🎬" : t.task_type === "subscription" ? "📢" : t.task_type === "ad_reward" ? "📺" : t.task_type === "ad_popup" ? "🎁" : t.task_type === "ad_task" ? "📋" : "🎁"}</div>`;
                         const rewardHtml = `<div class="task-reward-badge">Награда: +${t.reward} <i class="fa-solid fa-coins" style="color:#c6892a;font-size:10px;"></i></div>`;
                         const titleHtml = `<div class="task-title-row"><span class="task-title">${escHtmlTask(t.name)}</span></div>`;
                         let btnHtml = "";
@@ -5595,6 +5595,17 @@
                             btnHtml = `<button class="task-btn" style="background:linear-gradient(135deg,#fd79a8,#e84393);" onclick="watchAdPopup(${t.id}, this)">
                             <i class="fa-solid fa-gift"></i> Получить награду
                         </button>`;
+                        } else if (t.task_type === "ad_task") {
+                            const blockId = escHtmlTask(t.button_url || "");
+                            btnHtml = `<adsgram-task
+                                id="adsgram-task-${t.id}"
+                                data-block-id="${blockId}"
+                                data-task-id="${t.id}"
+                                style="display:block;margin-top:8px;--adsgram-task-font-size:14px;--adsgram-task-icon-size:42px;--adsgram-task-icon-border-radius:10px;--adsgram-task-button-width:90px;--adsgram-task-icon-title-gap:12px;">
+                                <div slot="button" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);color:#fff;padding:9px 16px;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;text-align:center;min-width:80px;">Перейти</div>
+                                <div slot="claim" style="background:linear-gradient(135deg,#e17055,#d63031);color:#fff;padding:9px 16px;border-radius:12px;font-size:13px;font-weight:600;cursor:pointer;text-align:center;min-width:80px;">Забрать</div>
+                                <div slot="done" style="background:linear-gradient(135deg,#00b894,#00cec9);color:#fff;padding:9px 16px;border-radius:12px;font-size:13px;font-weight:600;cursor:default;text-align:center;min-width:80px;opacity:0.85;">Готово ✓</div>
+                            </adsgram-task>`;
                         }
                         return `<div class="task-card" id="task-card-${t.id}">
                         <div class="task-card-top">
@@ -5606,6 +5617,18 @@
                     </div>`;
                     })
                     .join("");
+                // Bind reward event for adsgram-task web components
+                activeTasks.filter(t => t.task_type === "ad_task").forEach(t => {
+                    const el = document.getElementById(`adsgram-task-${t.id}`);
+                    if (el) {
+                        el.addEventListener("reward", () => completeTask(t.id));
+                        el.addEventListener("onBannerNotFound", () => {
+                            const card = document.getElementById(`task-card-${t.id}`);
+                            if (card) card.style.display = "none";
+                        });
+                        el.addEventListener("onError", (e) => console.warn("adsgram-task error", t.id, e));
+                    }
+                });
             }
 
             function escHtmlTask(str) {
