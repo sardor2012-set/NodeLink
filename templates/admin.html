@@ -1818,6 +1818,7 @@
                     <option value="subscription">Подписка</option>
                     <option value="other">Другое</option>
                     <option value="ad_reward">📺 Реклама (Adsgram Reward)</option>
+                    <option value="ad_task">📋 Задание (Adsgram Task)</option>
                 </select>
             </div>
 
@@ -3202,9 +3203,9 @@
             }
         }
 
-        const TASK_TYPE_LABELS = { video: 'Видео', subscription: 'Подписка', other: 'Другое', ad_reward: 'Реклама (Reward)' };
-        const TASK_TYPE_COLORS = { video: '#e17055', subscription: '#0984e3', other: '#6c5ce7', ad_reward: '#d63031' };
-        const TASK_TYPE_ICONS = { video: 'fa-play', subscription: 'fa-paper-plane', other: 'fa-arrow-up-right-from-square', ad_reward: 'fa-tv' };
+        const TASK_TYPE_LABELS = { video: 'Видео', subscription: 'Подписка', other: 'Другое', ad_reward: 'Реклама (Reward)', ad_task: 'Задание (Adsgram)' };
+        const TASK_TYPE_COLORS = { video: '#e17055', subscription: '#0984e3', other: '#6c5ce7', ad_reward: '#d63031', ad_task: '#6c5ce7' };
+        const TASK_TYPE_ICONS = { video: 'fa-play', subscription: 'fa-paper-plane', other: 'fa-arrow-up-right-from-square', ad_reward: 'fa-tv', ad_task: 'fa-list-check' };
 
         function renderAdminTasks(tasks) {
             const list = document.getElementById('admin-tasks-list');
@@ -3225,6 +3226,8 @@
                     detailHtml = `<div style="font-size:0.8em;color:#888;margin-top:4px;"><i class="fa-solid fa-pen" style="margin-right:4px;"></i>${escHtml(t.button_text || '')} → <a href="${escHtml(t.button_url || '')}" target="_blank" style="color:#0984e3;text-decoration:none;">${escHtml(t.button_url || '')}</a></div>`;
                 } else if (t.task_type === 'ad_reward' && t.button_url) {
                     detailHtml = `<div style="font-size:0.8em;color:#888;margin-top:4px;"><i class="fa-solid fa-rectangle-ad" style="margin-right:4px;color:#d63031;"></i>Block ID: <b>${escHtml(t.button_url)}</b></div>`;
+                } else if (t.task_type === 'ad_task' && t.button_url) {
+                    detailHtml = `<div style="font-size:0.8em;color:#888;margin-top:4px;"><i class="fa-solid fa-list-check" style="margin-right:4px;color:#6c5ce7;"></i>Block ID: <b>${escHtml(t.button_url)}</b></div>`;
                 }
                 const photoHtml = t.photo_url
                     ? `<img src="${escHtml(t.photo_url)}" alt="photo" style="width:42px;height:42px;border-radius:10px;object-fit:cover;flex-shrink:0;">`
@@ -3281,7 +3284,19 @@
             document.getElementById('task-video-fields').style.display = val === 'video' ? 'block' : 'none';
             document.getElementById('task-sub-fields').style.display = val === 'subscription' ? 'block' : 'none';
             document.getElementById('task-other-fields').style.display = val === 'other' ? 'block' : 'none';
-            document.getElementById('task-ad-fields').style.display = val === 'ad_reward' ? 'block' : 'none';
+            const isAdBlock = val === 'ad_reward' || val === 'ad_task';
+            document.getElementById('task-ad-fields').style.display = isAdBlock ? 'block' : 'none';
+            if (isAdBlock) {
+                const inp = document.getElementById('task-ad-block-id-input');
+                const lbl = document.querySelector('#task-ad-fields .form-label');
+                if (val === 'ad_task') {
+                    inp.placeholder = 'Например: task-7308';
+                    if (lbl) lbl.innerHTML = '<i class="fa-solid fa-list-check" style="color:#6c5ce7"></i> Block ID Adsgram (Task)';
+                } else {
+                    inp.placeholder = 'Например: rew-12345';
+                    if (lbl) lbl.innerHTML = '<i class="fa-solid fa-rectangle-ad" style="color:#e17055"></i> Block ID Adsgram (Reward)';
+                }
+            }
         }
 
         async function doCreateTask() {
@@ -3301,15 +3316,15 @@
             if (taskType === 'video' && !videoUrl) { errEl.textContent = 'Укажите ссылку на видео.'; errEl.style.display = 'block'; return; }
             if (taskType === 'subscription' && !channelLink) { errEl.textContent = 'Укажите ссылку на канал.'; errEl.style.display = 'block'; return; }
             if (taskType === 'other' && (!buttonText || !buttonUrl)) { errEl.textContent = 'Укажите текст и ссылку кнопки.'; errEl.style.display = 'block'; return; }
-            if (taskType === 'ad_reward' && !adBlockId) { errEl.textContent = 'Укажите Block ID из Adsgram.'; errEl.style.display = 'block'; return; }
+            if ((taskType === 'ad_reward' || taskType === 'ad_task') && !adBlockId) { errEl.textContent = 'Укажите Block ID из Adsgram.'; errEl.style.display = 'block'; return; }
 
             errEl.style.display = 'none';
             const btn = document.getElementById('task-create-btn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Создание...';
 
-            // For ad_reward, store block ID in button_url field
-            const finalButtonUrl = taskType === 'ad_reward' ? adBlockId : buttonUrl;
+            // For ad_reward / ad_task, store block ID in button_url field
+            const finalButtonUrl = (taskType === 'ad_reward' || taskType === 'ad_task') ? adBlockId : buttonUrl;
 
             try {
                 const res = await fetch('/api/admin/tasks/create', {
