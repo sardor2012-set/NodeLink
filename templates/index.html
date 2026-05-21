@@ -17,6 +17,7 @@
         ></script>
         <script src="https://telegram.org/js/telegram-web-app.js?62"></script>
         <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
+        <script>window.REFERRAL_MODE = {{ referral_mode }};</script>
         <style>
             :root {
                 --primary-color: #6c5ce7;
@@ -4475,7 +4476,7 @@
                         </button>
                     </div>
                     <div class="referral-percent-badge" id="referral-reward-badge">
-                        1 реферал = 5 коинов (HolyWorld)
+                        {% if referral_mode == 0 %}1 реферал = 5 коинов сразу!{% else %}1 реферал = 5 коинов (HolyWorld){% endif %}
                     </div>
                     <div class="referral-link-box">
                         <i class="fa-regular fa-copy referral-link-icon"></i>
@@ -4875,9 +4876,15 @@
 
                 const refBadge = document.getElementById("referral-reward-badge");
                 if (refBadge) {
-                    refBadge.textContent = currentStatus === "Premium"
-                        ? "1 реферал = 10 коинов Premium (HolyWorld)"
-                        : "1 реферал = 5 коинов (HolyWorld)";
+                    if (window.REFERRAL_MODE === 0) {
+                        refBadge.textContent = currentStatus === "Premium"
+                            ? "1 реферал = 10 коинов сразу! (Premium)"
+                            : "1 реферал = 5 коинов сразу!";
+                    } else {
+                        refBadge.textContent = currentStatus === "Premium"
+                            ? "1 реферал = 10 коинов Premium (HolyWorld)"
+                            : "1 реферал = 5 коинов (HolyWorld)";
+                    }
                 }
 
                 const premiumEl = document.getElementById(
