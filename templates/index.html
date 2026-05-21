@@ -2750,6 +2750,67 @@
             body.dark .tasks-empty-label {
                 color: var(--text-secondary-dark);
             }
+            .task-freq-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                font-size: 10.5px;
+                font-weight: 600;
+                border-radius: 20px;
+                padding: 2px 8px;
+                white-space: nowrap;
+            }
+            .task-freq-badge.one-time {
+                background: rgba(108,92,231,0.1);
+                color: #6c5ce7;
+            }
+            .task-freq-badge.daily {
+                background: rgba(0,184,148,0.12);
+                color: #00a884;
+            }
+            .task-cooldown-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                background: linear-gradient(135deg, #b8a96e, #c9a94a);
+                color: #fff;
+                border: none;
+                border-radius: 12px;
+                padding: 10px 16px;
+                font-size: 13px;
+                font-weight: 700;
+                cursor: default;
+                width: 100%;
+                box-shadow: 0 2px 10px rgba(180,150,50,0.3);
+                position: relative;
+                overflow: hidden;
+            }
+            .task-cooldown-btn::before {
+                content: '';
+                position: absolute;
+                top: 0; left: 0; right: 0; bottom: 0;
+                background: linear-gradient(90deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
+            }
+            .task-cooldown-timer {
+                font-size: 14px;
+                font-weight: 800;
+                letter-spacing: 0.5px;
+                font-variant-numeric: tabular-nums;
+            }
+            .task-cooldown-bar-wrap {
+                height: 3px;
+                background: rgba(255,255,255,0.2);
+                border-radius: 2px;
+                margin-top: 6px;
+                overflow: hidden;
+            }
+            .task-cooldown-bar {
+                height: 100%;
+                background: rgba(255,255,255,0.6);
+                border-radius: 2px;
+                transition: width 1s linear;
+            }
             /* ===== ADMIN BUTTON ===== */
             .admin-panel-btn-wrap {
                 display: none;
@@ -5567,52 +5628,109 @@
                 }
             }
 
+            // ===== DAILY TASK COUNTDOWN =====
+            let _cooldownTimers = {};
+
+            function _stopAllCooldownTimers() {
+                Object.values(_cooldownTimers).forEach(id => clearInterval(id));
+                _cooldownTimers = {};
+            }
+
+            function _fmtCountdown(ms) {
+                if (ms <= 0) return "00:00:00";
+                const totalSec = Math.floor(ms / 1000);
+                const h = Math.floor(totalSec / 3600);
+                const m = Math.floor((totalSec % 3600) / 60);
+                const s = totalSec % 60;
+                return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+            }
+
+            function _startCooldownTimer(taskId, resetAtIso, totalMs) {
+                const timerEl = document.getElementById(`task-timer-${taskId}`);
+                const barEl = document.getElementById(`task-bar-${taskId}`);
+                if (!timerEl) return;
+                const resetTime = new Date(resetAtIso).getTime();
+
+                function tick() {
+                    const remaining = resetTime - Date.now();
+                    if (remaining <= 0) {
+                        clearInterval(_cooldownTimers[taskId]);
+                        delete _cooldownTimers[taskId];
+                        loadTasks();
+                        return;
+                    }
+                    timerEl.textContent = _fmtCountdown(remaining);
+                    if (barEl && totalMs > 0) {
+                        const pct = Math.max(0, Math.min(100, (remaining / totalMs) * 100));
+                        barEl.style.width = pct + '%';
+                    }
+                }
+                tick();
+                _cooldownTimers[taskId] = setInterval(tick, 1000);
+            }
+
             function renderTasks(tasks) {
+                _stopAllCooldownTimers();
                 const container = document.getElementById("tasks-dynamic-list");
-                const activeTasks = (tasks || []).filter((t) => !t.completed);
-                if (activeTasks.length === 0) {
+                // Show all tasks except permanently completed one_time tasks
+                const visibleTasks = (tasks || []).filter((t) => !t.completed);
+                if (visibleTasks.length === 0) {
                     container.innerHTML =
                         '<div class="tasks-empty-label">Пока нет активных заданий</div>';
                     return;
                 }
-                container.innerHTML = activeTasks
+                container.innerHTML = visibleTasks
                     .map((t) => {
+                        const isDaily = t.task_frequency === "daily";
+                        const inCooldown = isDaily && t.daily_completed && t.reset_at;
                         const iconHtml = t.photo_url
                             ? `<img src="${escHtmlTask(t.photo_url)}" alt="icon" style="width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,0.12);">`
                             : `<div class="task-icon">${t.task_type === "video" ? "🎬" : t.task_type === "subscription" ? "📢" : t.task_type === "ad_reward" ? "📺" : t.task_type === "ad_popup" ? "🎁" : t.task_type === "ad_task" ? "📋" : "🎁"}</div>`;
                         const rewardHtml = `<div class="task-reward-badge">Награда: +${t.reward} <i class="fa-solid fa-coins" style="color:#c6892a;font-size:10px;"></i></div>`;
-                        const titleHtml = `<div class="task-title-row"><span class="task-title">${escHtmlTask(t.name)}</span></div>`;
+                        const freqBadge = isDaily
+                            ? `<span class="task-freq-badge daily"><i class="fa-solid fa-rotate" style="font-size:9px;"></i> Ежедневное</span>`
+                            : `<span class="task-freq-badge one-time"><i class="fa-solid fa-circle-dot" style="font-size:9px;"></i> Одиночное</span>`;
+                        const titleHtml = `<div class="task-title-row">${freqBadge}<span class="task-title">${escHtmlTask(t.name)}</span></div>`;
                         let btnHtml = "";
-                        if (t.completed) {
-                            btnHtml = `<button class="task-btn" style="background:linear-gradient(135deg,#00b894,#00cec9);cursor:default;" disabled>
-                            <i class="fa-solid fa-circle-check"></i> Выполнено
-                        </button>`;
+                        if (inCooldown) {
+                            const resetAtIso = t.reset_at;
+                            const totalMs = (t.reset_hours || 24) * 3600 * 1000;
+                            const remainingMs = new Date(resetAtIso).getTime() - Date.now();
+                            const pct = Math.max(0, Math.min(100, (remainingMs / totalMs) * 100));
+                            btnHtml = `<div>
+                                <button class="task-cooldown-btn" disabled>
+                                    <i class="fa-solid fa-clock" style="font-size:15px;opacity:0.85;"></i>
+                                    <span>Сброс через <span class="task-cooldown-timer" id="task-timer-${t.id}">${_fmtCountdown(remainingMs)}</span></span>
+                                    <i class="fa-regular fa-calendar-clock" style="font-size:13px;opacity:0.6;margin-left:auto;"></i>
+                                </button>
+                                <div class="task-cooldown-bar-wrap"><div class="task-cooldown-bar" id="task-bar-${t.id}" style="width:${pct}%;"></div></div>
+                            </div>`;
                         } else if (t.task_type === "video") {
                             btnHtml = `<button class="task-btn" onclick="openTaskVideo(${t.id}, '${escHtmlTask(t.video_url || "")}')">
-                            <i class="fa-solid fa-play"></i> Смотреть
-                        </button>`;
+                                <i class="fa-solid fa-play"></i> Смотреть
+                            </button>`;
                         } else if (t.task_type === "subscription") {
                             btnHtml = `<div style="display:flex;gap:8px;flex-wrap:wrap;">
-                            <button class="task-btn" style="background:linear-gradient(135deg,#0984e3,#74b9ff);" onclick="openTaskChannel('${escHtmlTask(t.channel_link || "")}')">
-                                <i class="fa-solid fa-paper-plane"></i> Выполнить
-                            </button>
-                            <button class="task-btn" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);" onclick="checkTaskSubscription(${t.id}, this)">
-                                <i class="fa-solid fa-circle-check"></i> Проверить
-                            </button>
-                        </div>`;
+                                <button class="task-btn" style="background:linear-gradient(135deg,#0984e3,#74b9ff);" onclick="openTaskChannel('${escHtmlTask(t.channel_link || "")}')">
+                                    <i class="fa-solid fa-paper-plane"></i> Выполнить
+                                </button>
+                                <button class="task-btn" style="background:linear-gradient(135deg,#6c5ce7,#a29bfe);" onclick="checkTaskSubscription(${t.id}, this)">
+                                    <i class="fa-solid fa-circle-check"></i> Проверить
+                                </button>
+                            </div>`;
                         } else if (t.task_type === "other") {
                             btnHtml = `<button class="task-btn" onclick="openTaskOther(${t.id}, '${escHtmlTask(t.button_url || "")}', this)">
-                            <i class="fa-solid fa-arrow-up-right-from-square"></i> ${escHtmlTask(t.button_text || "Перейти")}
-                        </button>`;
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i> ${escHtmlTask(t.button_text || "Перейти")}
+                            </button>`;
                         } else if (t.task_type === "ad_reward") {
                             const blockId = escHtmlTask(t.button_url || "");
                             btnHtml = `<button class="task-btn" style="background:linear-gradient(135deg,#e17055,#d63031);" onclick="watchAdReward(${t.id}, this, '${blockId}')">
-                            <i class="fa-solid fa-tv"></i> Смотреть рекламу
-                        </button>`;
+                                <i class="fa-solid fa-tv"></i> Смотреть рекламу
+                            </button>`;
                         } else if (t.task_type === "ad_popup") {
                             btnHtml = `<button class="task-btn" style="background:linear-gradient(135deg,#fd79a8,#e84393);" onclick="watchAdPopup(${t.id}, this)">
-                            <i class="fa-solid fa-gift"></i> Получить награду
-                        </button>`;
+                                <i class="fa-solid fa-gift"></i> Получить награду
+                            </button>`;
                         } else if (t.task_type === "ad_task") {
                             const blockId = escHtmlTask(t.button_url || "");
                             btnHtml = `<adsgram-task
@@ -5626,17 +5744,24 @@
                             </adsgram-task>`;
                         }
                         return `<div class="task-card" id="task-card-${t.id}">
-                        <div class="task-card-top">
-                            ${iconHtml}
-                            ${rewardHtml}
-                        </div>
-                        ${titleHtml}
-                        ${btnHtml}
-                    </div>`;
+                            <div class="task-card-top">
+                                ${iconHtml}
+                                ${rewardHtml}
+                            </div>
+                            ${titleHtml}
+                            ${btnHtml}
+                        </div>`;
                     })
                     .join("");
+
+                // Start countdown timers for daily tasks in cooldown
+                visibleTasks.filter(t => t.task_frequency === "daily" && t.daily_completed && t.reset_at).forEach(t => {
+                    const totalMs = (t.reset_hours || 24) * 3600 * 1000;
+                    _startCooldownTimer(t.id, t.reset_at, totalMs);
+                });
+
                 // Bind reward event for adsgram-task web components
-                activeTasks.filter(t => t.task_type === "ad_task").forEach(t => {
+                visibleTasks.filter(t => t.task_type === "ad_task" && !(t.daily_completed && t.reset_at)).forEach(t => {
                     const el = document.getElementById(`adsgram-task-${t.id}`);
                     if (el) {
                         el.addEventListener("reward", () => completeTask(t.id));
