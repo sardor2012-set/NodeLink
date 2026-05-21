@@ -5495,8 +5495,8 @@
                 }
             }
 
-            // Show interstitial every 5 minutes (skipped for Premium users)
-            setInterval(_tryShowInAppAd, 5 * 60 * 1000);
+            // Show interstitial every 2 minutes (skipped for Premium users)
+            setInterval(_tryShowInAppAd, 2 * 60 * 1000);
 
             function navigateTo(pageId) {
                 if (currentPage === pageId) return;
@@ -5799,6 +5799,7 @@
                                 " монет зачислено.",
                             "success",
                         );
+                        _tryShowInAppAd();
                         await loadTasks();
                         if (userId) await refreshUserBalance();
                     } else if (d.already_completed) {
