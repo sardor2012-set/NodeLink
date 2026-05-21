@@ -561,6 +561,23 @@ def init_db():
     """)
 
     cur.execute("""
+        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_frequency TEXT DEFAULT 'one_time'
+    """)
+    cur.execute("""
+        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reset_hours INTEGER DEFAULT 24
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS daily_task_completions (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            completed_at TIMESTAMPTZ DEFAULT NOW(),
+            reset_at TIMESTAMPTZ NOT NULL
+        )
+    """)
+
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS task_completions (
             id SERIAL PRIMARY KEY,
             user_id BIGINT NOT NULL REFERENCES users(telegram_id),
@@ -1795,19 +1812,46 @@ def get_tasks():
         for t in tasks:
             if t.get("created_at"):
                 t["created_at"] = t["created_at"].isoformat()
+            t["task_frequency"] = t.get("task_frequency") or "one_time"
+            t["reset_hours"] = t.get("reset_hours") or 24
+
         completed_ids = set()
+        daily_cooldowns = {}  # task_id -> reset_at isoformat
         if user_id:
             try:
                 uid = int(user_id)
+                # one_time completions
                 cur.execute(
                     "SELECT task_id FROM task_completions WHERE user_id = %s",
                     (uid,),
                 )
                 completed_ids = {row["task_id"] for row in cur.fetchall()}
+                # daily cooldowns — find most recent completion per task
+                cur.execute(
+                    """
+                    SELECT DISTINCT ON (task_id) task_id, reset_at
+                    FROM daily_task_completions
+                    WHERE user_id = %s
+                    ORDER BY task_id, completed_at DESC
+                    """,
+                    (uid,),
+                )
+                now_utc = datetime.now(timezone.utc)
+                for row in cur.fetchall():
+                    if row["reset_at"] and row["reset_at"] > now_utc:
+                        daily_cooldowns[row["task_id"]] = row["reset_at"].isoformat()
             except (TypeError, ValueError):
                 pass
+
         for t in tasks:
-            t["completed"] = t["id"] in completed_ids
+            if t["task_frequency"] == "daily":
+                t["completed"] = False
+                t["daily_completed"] = t["id"] in daily_cooldowns
+                t["reset_at"] = daily_cooldowns.get(t["id"])
+            else:
+                t["completed"] = t["id"] in completed_ids
+                t["daily_completed"] = False
+                t["reset_at"] = None
         cur.close()
         conn.close()
         return jsonify(tasks)
@@ -1834,14 +1878,34 @@ def check_subscription():
             cur.close()
             conn.close()
             return jsonify({"error": "task not found"}), 404
-        cur.execute(
-            "SELECT 1 FROM task_completions WHERE user_id = %s AND task_id = %s",
-            (user_id, task_id),
-        )
-        if cur.fetchone():
-            cur.close()
-            conn.close()
-            return jsonify({"ok": True, "already_completed": True})
+        frequency = task.get("task_frequency") or "one_time"
+        reset_hours = int(task.get("reset_hours") or 24)
+        now_utc = datetime.now(timezone.utc)
+
+        if frequency == "daily":
+            cur.execute(
+                """
+                SELECT reset_at FROM daily_task_completions
+                WHERE user_id = %s AND task_id = %s
+                ORDER BY completed_at DESC LIMIT 1
+                """,
+                (user_id, task_id),
+            )
+            row = cur.fetchone()
+            if row and row["reset_at"] and row["reset_at"] > now_utc:
+                cur.close()
+                conn.close()
+                return jsonify({"ok": True, "already_completed": True, "reset_at": row["reset_at"].isoformat()})
+        else:
+            cur.execute(
+                "SELECT 1 FROM task_completions WHERE user_id = %s AND task_id = %s",
+                (user_id, task_id),
+            )
+            if cur.fetchone():
+                cur.close()
+                conn.close()
+                return jsonify({"ok": True, "already_completed": True})
+
         channel = task["channel_link"]
         try:
             resp = http_requests.get(
@@ -1859,18 +1923,34 @@ def check_subscription():
             cur.close()
             conn.close()
             return jsonify({"error": "check_failed"}), 500
-        cur.execute(
-            "INSERT INTO task_completions (user_id, task_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-            (user_id, task_id),
-        )
-        cur.execute(
-            "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
-            (task["reward"], user_id),
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({"ok": True, "reward": task["reward"]})
+
+        if frequency == "daily":
+            reset_at = now_utc + timedelta(hours=reset_hours)
+            cur.execute(
+                "INSERT INTO daily_task_completions (user_id, task_id, completed_at, reset_at) VALUES (%s, %s, %s, %s)",
+                (user_id, task_id, now_utc, reset_at),
+            )
+            cur.execute(
+                "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
+                (task["reward"], user_id),
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return jsonify({"ok": True, "reward": task["reward"], "daily": True, "reset_at": reset_at.isoformat()})
+        else:
+            cur.execute(
+                "INSERT INTO task_completions (user_id, task_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (user_id, task_id),
+            )
+            cur.execute(
+                "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
+                (task["reward"], user_id),
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return jsonify({"ok": True, "reward": task["reward"]})
     except Exception as e:
         logger.error("check_subscription error: %s", e)
         return jsonify({"error": str(e)}), 500
@@ -1898,26 +1978,63 @@ def complete_task():
             cur.close()
             conn.close()
             return jsonify({"error": "use check-subscription endpoint"}), 400
-        cur.execute(
-            "SELECT 1 FROM task_completions WHERE user_id = %s AND task_id = %s",
-            (user_id, task_id),
-        )
-        if cur.fetchone():
+
+        frequency = task.get("task_frequency") or "one_time"
+        reset_hours = int(task.get("reset_hours") or 24)
+
+        if frequency == "daily":
+            # Check if still in cooldown
+            now_utc = datetime.now(timezone.utc)
+            cur.execute(
+                """
+                SELECT reset_at FROM daily_task_completions
+                WHERE user_id = %s AND task_id = %s
+                ORDER BY completed_at DESC LIMIT 1
+                """,
+                (user_id, task_id),
+            )
+            row = cur.fetchone()
+            if row and row["reset_at"] and row["reset_at"] > now_utc:
+                reset_at_str = row["reset_at"].isoformat()
+                cur.close()
+                conn.close()
+                return jsonify({"ok": True, "already_completed": True, "reset_at": reset_at_str})
+            # Record new daily completion
+            reset_at = now_utc + timedelta(hours=reset_hours)
+            cur.execute(
+                "INSERT INTO daily_task_completions (user_id, task_id, completed_at, reset_at) VALUES (%s, %s, %s, %s)",
+                (user_id, task_id, now_utc, reset_at),
+            )
+            cur.execute(
+                "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
+                (task["reward"], user_id),
+            )
+            conn.commit()
             cur.close()
             conn.close()
-            return jsonify({"ok": True, "already_completed": True})
-        cur.execute(
-            "INSERT INTO task_completions (user_id, task_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-            (user_id, task_id),
-        )
-        cur.execute(
-            "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
-            (task["reward"], user_id),
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({"ok": True, "reward": task["reward"]})
+            return jsonify({"ok": True, "reward": task["reward"], "daily": True, "reset_at": reset_at.isoformat()})
+        else:
+            # one_time
+            cur.execute(
+                "SELECT 1 FROM task_completions WHERE user_id = %s AND task_id = %s",
+                (user_id, task_id),
+            )
+            if cur.fetchone():
+                cur.close()
+                conn.close()
+                return jsonify({"ok": True, "already_completed": True})
+            cur.execute(
+                "INSERT INTO task_completions (user_id, task_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (user_id, task_id),
+            )
+            cur.execute(
+                "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
+                (task["reward"], user_id),
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            return jsonify({"ok": True, "reward": task["reward"]})
     except Exception as e:
         logger.error("complete_task error: %s", e)
         return jsonify({"error": str(e)}), 500
@@ -2916,6 +3033,15 @@ def admin_create_task():
     channel_link = (data.get("channel_link") or "").strip() or None
     button_text = (data.get("button_text") or "").strip() or None
     button_url = (data.get("button_url") or "").strip() or None
+    task_frequency = (data.get("task_frequency") or "one_time").strip()
+    if task_frequency not in ("one_time", "daily"):
+        task_frequency = "one_time"
+    try:
+        reset_hours = int(data.get("reset_hours") or 24)
+        if reset_hours < 1:
+            reset_hours = 1
+    except (TypeError, ValueError):
+        reset_hours = 24
 
     if not name:
         return jsonify({"error": "name is required"}), 400
@@ -2975,8 +3101,8 @@ def admin_create_task():
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             """
-            INSERT INTO tasks (name, photo_url, reward, task_type, video_url, channel_link, button_text, button_url)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO tasks (name, photo_url, reward, task_type, video_url, channel_link, button_text, button_url, task_frequency, reset_hours)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
@@ -2988,6 +3114,8 @@ def admin_create_task():
                 channel_link,
                 button_text,
                 button_url,
+                task_frequency,
+                reset_hours,
             ),
         )
         task = dict(cur.fetchone())
