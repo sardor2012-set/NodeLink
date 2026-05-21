@@ -5315,10 +5315,12 @@
                         document
                             .getElementById("success-modal")
                             .classList.add("open");
-                        try {
-                            AdsgramController.show().catch(() => {});
-                        } catch (adErr) {
-                            console.warn('Ad show error:', adErr);
+                        if (!_userHasPremium()) {
+                            try {
+                                AdsgramController.show().catch(() => {});
+                            } catch (adErr) {
+                                console.warn('Ad show error:', adErr);
+                            }
                         }
                     } else {
                         if (data.error === "insufficient_balance") {
@@ -5473,6 +5475,12 @@
             // ===== ADSGRAM INTERSTITIAL =====
             let AdsgramController = null;
 
+            function _userHasPremium() {
+                if (currentStatus !== "Premium") return false;
+                if (!currentPremiumUntil) return false;
+                return new Date(currentPremiumUntil) > new Date();
+            }
+
             function _initAdsgram() {
                 if (window.Adsgram && !AdsgramController) {
                     AdsgramController = window.Adsgram.init({ blockId: "int-30697" });
@@ -5480,13 +5488,14 @@
             }
 
             function _tryShowInAppAd() {
+                if (_userHasPremium()) return;
                 _initAdsgram();
                 if (AdsgramController) {
                     AdsgramController.show().catch(() => {});
                 }
             }
 
-            // Show interstitial every 5 minutes
+            // Show interstitial every 5 minutes (skipped for Premium users)
             setInterval(_tryShowInAppAd, 5 * 60 * 1000);
 
             function navigateTo(pageId) {
