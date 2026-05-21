@@ -47,6 +47,11 @@ REQUIRED_CHANNELS = {
     "NodeLink news": "@NodeLink_news",
 }
 
+# Referral mode:
+# 0 = simple: inviter gets coins immediately when friend joins
+# 1 = chain:  inviter gets coins only after their friend also invites someone
+REFERRAL_MODE = 0
+
 MENU = (
     ""
 )
@@ -563,7 +568,8 @@ def init_db():
         )
     """)
 
-    # Upsert built-in ad tasks
+    # Remove legacy built-in ad tasks if they still exist
+    cur.execute("DELETE FROM tasks WHERE id IN (901, 902)")
 
     # Sync product catalog — upsert by explicit ID so updates apply on every restart
     catalog = [
@@ -736,7 +742,7 @@ def enforce_block_on_api():
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", referral_mode=REFERRAL_MODE)
 
 
 @app.route("/admin")
@@ -1912,6 +1918,51 @@ def complete_task():
         return jsonify({"ok": True, "reward": task["reward"]})
     except Exception as e:
         logger.error("complete_task error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/adsgram/reward")
+def adsgram_reward_webhook():
+    """
+    Server-side callback from Adsgram (Bot block type).
+    Adsgram calls: GET /api/adsgram/reward?user_id=<telegramId>&reward=<coins>
+    [userId] placeholder in the Reward URL is replaced by Adsgram automatically.
+    """
+    user_id = request.args.get("user_id")
+    try:
+        reward_amount = int(request.args.get("reward", 5))
+        if reward_amount <= 0:
+            reward_amount = 5
+    except (TypeError, ValueError):
+        reward_amount = 5
+
+    if not user_id:
+        return jsonify({"error": "missing user_id"}), 400
+
+    try:
+        uid = int(user_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid user_id"}), 400
+
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT telegram_id FROM users WHERE telegram_id = %s", (uid,))
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({"error": "user not found"}), 404
+        cur.execute(
+            "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
+            (reward_amount, uid),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        logger.info("adsgram_reward: user %s credited %s coins", uid, reward_amount)
+        return jsonify({"ok": True, "reward": reward_amount})
+    except Exception as e:
+        logger.error("adsgram_reward error: %s", e)
         return jsonify({"error": str(e)}), 500
 
 
@@ -3188,30 +3239,32 @@ def process_referral_db(inviter_id: int, invitee_id: int) -> dict:
         result["inviter_id"] = inviter_id
         result["invitee_display"] = invitee_name
 
-        # Now check: was the INVITER themselves referred by someone with a pending unconfirmed link?
-        # If so, this new referral counts as the inviter's "first invited friend" → confirm it.
-        cur.execute(
-            """
-            SELECT r.inviter_id, u.username, u.first_name
-            FROM referrals r
-            JOIN users u ON r.invitee_id = u.telegram_id
-            WHERE r.invitee_id = %s
-              AND r.confirmed = FALSE
-              AND r.expires_at > NOW()
-        """,
-            (inviter_id,),
-        )
-        inviter_pending = cur.fetchone()
+        if REFERRAL_MODE == 0:
+            # Simple mode: reward inviter immediately when friend joins
+            _confirm_referral(cur, inviter_id, invitee_id, invitee_name, result)
+        else:
+            # Chain mode: check if the INVITER themselves was referred by someone with a
+            # pending unconfirmed link. If inviter now has ≥1 referral → confirm their own.
+            cur.execute(
+                """
+                SELECT r.inviter_id, u.username, u.first_name
+                FROM referrals r
+                JOIN users u ON r.invitee_id = u.telegram_id
+                WHERE r.invitee_id = %s
+                  AND r.confirmed = FALSE
+                  AND r.expires_at > NOW()
+            """,
+                (inviter_id,),
+            )
+            inviter_pending = cur.fetchone()
 
-        if inviter_pending:
-            # The inviter was previously invited by someone (inviter_pending["inviter_id"])
-            # Inviter just got their first referral → confirm
-            inviter_name = (
-                inviter["username"] or inviter["first_name"] or str(inviter_id)
-            )
-            _confirm_referral(
-                cur, inviter_pending["inviter_id"], inviter_id, inviter_name, result
-            )
+            if inviter_pending:
+                inviter_name = (
+                    inviter["username"] or inviter["first_name"] or str(inviter_id)
+                )
+                _confirm_referral(
+                    cur, inviter_pending["inviter_id"], inviter_id, inviter_name, result
+                )
 
         conn.commit()
         cur.close()
@@ -3320,20 +3373,21 @@ async def handle_referral(bot: Bot, inviter_id: int, invitee_user):
             inviter_is_premium = False
         coins_text = "+10 монет (Premium)" if inviter_is_premium else "+5 монет"
 
-        # Notify inviter about new join
-        try:
-            await bot.send_message(
-                chat_id=inviter_id,
-                text=(
-                    f"<tg-emoji emoji-id=\"5456140674028019486\">⚡️</tg-emoji> Пользователь {display} присоединился по твоей ссылке!\n\n"
-                    f"Ты получишь {coins_text}, как только он пригласит 1 друга."
-                ),
-                parse_mode="HTML",
-            )
-        except TelegramAPIError as e:
-            logger.warning("Не удалось уведомить пригласившего %s: %s", inviter_id, e)
+        if REFERRAL_MODE == 1:
+            # Chain mode: notify that coins come later
+            try:
+                await bot.send_message(
+                    chat_id=inviter_id,
+                    text=(
+                        f"<tg-emoji emoji-id=\"5456140674028019486\">⚡️</tg-emoji> Пользователь {display} присоединился по твоей ссылке!\n\n"
+                        f"Ты получишь {coins_text}, как только он пригласит 1 друга."
+                    ),
+                    parse_mode="HTML",
+                )
+            except TelegramAPIError as e:
+                logger.warning("Не удалось уведомить пригласившего %s: %s", inviter_id, e)
 
-    # If referral was immediately confirmed (invitee already had referrals)
+    # Confirmed notification (mode 1: chain confirmed; mode 0: immediate reward)
     if ref_result.get("confirm_inviter_id"):
         await send_referral_confirmed_notification(bot, ref_result)
 
@@ -3350,14 +3404,21 @@ async def send_referral_confirmed_notification(bot: Bot, result: dict):
     coins = result.get("coins_awarded", 5)
     is_premium = result.get("confirm_is_premium", False)
     coins_label = f"+{coins} монет (Premium)" if is_premium else f"+{coins} монет"
+    if REFERRAL_MODE == 0:
+        join_text = (
+            f"<tg-emoji emoji-id=\"5197474765387864959\">✅</tg-emoji> {display} присоединился по твоей ссылке!\n\n"
+            f"Начислено <b>{coins_label}</b> — они уже на твоём балансе. 🎉"
+        )
+    else:
+        join_text = (
+            f"<tg-emoji emoji-id=\"5197474765387864959\">✅</tg-emoji> Реферал подтверждён!\n\n"
+            f"{display} пригласил друга.\n"
+            f"Начислено <b>{coins_label}</b>."
+        )
     try:
         await bot.send_message(
             chat_id=inviter_id,
-            text=(
-                f"<tg-emoji emoji-id=\"5197474765387864959\">✅</tg-emoji> Реферал подтверждён!\n\n"
-                f"{display} пригласил друга.\n"
-                f"Тебе начислено: <b>{coins_label}</b> <tg-emoji emoji-id=\"5395755469660762251\">🎉</tg-emoji>"
-            ),
+            text=join_text,
             parse_mode="HTML",
         )
     except TelegramAPIError as e:
@@ -3476,19 +3537,20 @@ async def callback_instruction(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
+    referral_line = (
+        '<tg-emoji emoji-id="5769289093221454192">🔗</tg-emoji> Когда человек перейдёт по твоей ссылке, ты <b>сразу получишь 5 монет</b> на баланс!\n\n'
+        if REFERRAL_MODE == 0 else
+        '<tg-emoji emoji-id="5769289093221454192">🔗</tg-emoji> Когда человек перейдёт по твоей ссылке <b>и пригласит своего друга,</b> ты получишь <b>5 монеты,</b> которые можно потратить в магазине.\n\n'
+    )
     await callback.message.answer(
-        '<tg-emoji emoji-id=\"5287684458881756303\">🤖</tg-emoji> В этом боте ты можешь зарабатывать коины на <b>HolyWorld Lite,</b>просто приглашая друзей или выполняя лёгкие задания!\n\n'
-
-'<tg-emoji emoji-id=\"5271604874419647061\">🔗</tg-emoji> <b>Как пригласить друга и получить монеты?</b>\n\n'
-
-'<tg-emoji emoji-id=\"5886583490434044162\">👆</tg-emoji> Нажми кнопку <b>«Реферальная ссылка»</b> в меню бота (/menu).\n'
-'<tg-emoji emoji-id=\"6037622221625626773\">➡️</tg-emoji> Отправь свою ссылку друзьям или размещай её в группах и каналах.\n'
-'<tg-emoji emoji-id=\"5769289093221454192\">🔗</tg-emoji> Когда человек перейдёт по твоей ссылке <b>и пригласит своего друга,</b> ты получишь <b>5 монеты,</b> которые можно потратить в магазине.\n\n'
-
-'<tg-emoji emoji-id=\"5334882760735598374\">📝</tg-emoji> <b>Как получить монеты за выполнение заданий?</b>\n\n'
-
-'<tg-emoji emoji-id=\"5884106131822875141\">👆</tg-emoji> Нажми кнопку <b>«Задания»</b> в меню (/menu).\n'
-'<tg-emoji emoji-id=\"6033070647213560346\">🪟</tg-emoji> В открывшемся приложении выполняй задания и моментально получай монеты на свой баланс.',
+        '<tg-emoji emoji-id="5287684458881756303">🤖</tg-emoji> В этом боте ты можешь зарабатывать коины на <b>HolyWorld Lite,</b>просто приглашая друзей или выполняя лёгкие задания!\n\n'
+        '<tg-emoji emoji-id="5271604874419647061">🔗</tg-emoji> <b>Как пригласить друга и получить монеты?</b>\n\n'
+        '<tg-emoji emoji-id="5886583490434044162">👆</tg-emoji> Нажми кнопку <b>«Реферальная ссылка»</b> в меню бота (/menu).\n'
+        '<tg-emoji emoji-id="6037622221625626773">➡️</tg-emoji> Отправь свою ссылку друзьям или размещай её в группах и каналах.\n'
+        + referral_line +
+        '<tg-emoji emoji-id="5334882760735598374">📝</tg-emoji> <b>Как получить монеты за выполнение заданий?</b>\n\n'
+        '<tg-emoji emoji-id="5884106131822875141">👆</tg-emoji> Нажми кнопку <b>«Задания»</b> в меню (/menu).\n'
+        '<tg-emoji emoji-id="6033070647213560346">🪟</tg-emoji> В открывшемся приложении выполняй задания и моментально получай монеты на свой баланс.',
         parse_mode="HTML",
         reply_markup=back_keyboard(),
     )
@@ -3525,7 +3587,11 @@ async def callback_referral(callback: CallbackQuery, bot: Bot):
         "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
         f'<tg-emoji emoji-id="6032594876506312598">👥</tg-emoji> <b>Рефералов:</b> {referral_count}\n\n'
         "Рефералы - это ваши друзья, приглашённые в бота через эту ссылку. "
-        "Каждый новый реферал который пригласил своего реферала принесет вам +5 монет к балансу!"
+        + (
+            "Каждый приглашённый друг сразу принесёт вам +5 монет к балансу!"
+            if REFERRAL_MODE == 0 else
+            "Каждый новый реферал который пригласил своего реферала принесет вам +5 монет к балансу!"
+        )
     )
 
     try:
@@ -3709,7 +3775,11 @@ async def cmd_invite(message: Message, bot: Bot):
         "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
         f'<tg-emoji emoji-id="6032594876506312598">👥</tg-emoji> <b>Рефералов:</b> {referral_count}\n\n'
         "Рефералы - это ваши друзья, приглашённые в бота через эту ссылку. "
-        "Каждый новый реферал который пригласил своего реферала принесет вам +5 монет к балансу!"
+        + (
+            "Каждый приглашённый друг сразу принесёт вам +5 монет к балансу!"
+            if REFERRAL_MODE == 0 else
+            "Каждый новый реферал который пригласил своего реферала принесет вам +5 монет к балансу!"
+        )
     )
     await message.answer(text, parse_mode="HTML", reply_markup=back_keyboard())
 
@@ -3743,7 +3813,11 @@ async def cmd_instruction(message: Message):
         '<tg-emoji emoji-id="5271604874419647061">🔗</tg-emoji> <b>Как пригласить друга и получить монеты?</b>\n\n'
         '<tg-emoji emoji-id="5886583490434044162">👆</tg-emoji> Нажми кнопку <b>«Реферальная ссылка»</b> в меню бота (/menu).\n'
         '<tg-emoji emoji-id="6037622221625626773">➡️</tg-emoji> Отправь свою ссылку друзьям или размещай её в группах и каналах.\n'
-        '<tg-emoji emoji-id="5769289093221454192">🔗</tg-emoji> Когда человек перейдёт по твоей ссылке <b>и пригласит своего друга,</b> ты получишь <b>5 монеты,</b> которые можно потратить в магазине.\n\n'
+        + (
+            '<tg-emoji emoji-id="5769289093221454192">🔗</tg-emoji> Когда человек перейдёт по твоей ссылке, ты <b>сразу получишь 5 монет</b> на баланс!\n\n'
+            if REFERRAL_MODE == 0 else
+            '<tg-emoji emoji-id="5769289093221454192">🔗</tg-emoji> Когда человек перейдёт по твоей ссылке <b>и пригласит своего друга,</b> ты получишь <b>5 монеты,</b> которые можно потратить в магазине.\n\n'
+        ) +
         '<tg-emoji emoji-id="5334882760735598374">📝</tg-emoji> <b>Как получить монеты за выполнение заданий?</b>\n\n'
         '<tg-emoji emoji-id="5884106131822875141">👆</tg-emoji> Нажми кнопку <b>«Задания»</b> в меню (/menu).\n'
         '<tg-emoji emoji-id="6033070647213560346">🪟</tg-emoji> В открывшемся приложении выполняй задания и моментально получай монеты на свой баланс.',
