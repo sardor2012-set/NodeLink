@@ -564,17 +564,6 @@ def init_db():
     """)
 
     # Upsert built-in ad tasks
-    cur.execute("""
-        INSERT INTO tasks (id, name, reward, task_type, is_active)
-        VALUES
-            (901, 'Посмотрите видео и получите награду', 5, 'ad_reward', TRUE),
-            (902, 'Получите награду за один клик', 5, 'ad_popup', TRUE)
-        ON CONFLICT (id) DO UPDATE SET
-            name = EXCLUDED.name,
-            reward = EXCLUDED.reward,
-            task_type = EXCLUDED.task_type,
-            is_active = EXCLUDED.is_active
-    """)
 
     # Sync product catalog — upsert by explicit ID so updates apply on every restart
     catalog = [
