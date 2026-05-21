@@ -1822,6 +1822,34 @@
                 </select>
             </div>
 
+            <div class="form-group">
+                <label class="form-label"><i class="fa-solid fa-rotate" style="color:#00b894"></i> Периодичность</label>
+                <div style="display:flex;gap:10px;margin-top:4px;">
+                    <label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;background:var(--input-bg,#f4f6fa);border:2px solid var(--border,#e0e7ef);border-radius:12px;padding:10px 14px;transition:all 0.18s;" id="freq-one-label">
+                        <input type="radio" name="task-frequency" value="one_time" id="freq-one" checked onchange="onFreqChange(this.value)" style="accent-color:#6c5ce7;width:16px;height:16px;">
+                        <span>
+                            <span style="font-weight:700;font-size:0.93em;color:#1a1a2e;">🎯 Одиночное</span><br>
+                            <span style="font-size:0.76em;color:#888;">Выполняется один раз</span>
+                        </span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;background:var(--input-bg,#f4f6fa);border:2px solid var(--border,#e0e7ef);border-radius:12px;padding:10px 14px;transition:all 0.18s;" id="freq-daily-label">
+                        <input type="radio" name="task-frequency" value="daily" id="freq-daily" onchange="onFreqChange(this.value)" style="accent-color:#00b894;width:16px;height:16px;">
+                        <span>
+                            <span style="font-weight:700;font-size:0.93em;color:#1a1a2e;">🔄 Ежедневное</span><br>
+                            <span style="font-size:0.76em;color:#888;">Сбрасывается по таймеру</span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <div id="task-reset-hours-fields" style="display:none;">
+                <div class="form-group">
+                    <label class="form-label"><i class="fa-solid fa-clock" style="color:#fdcb6e"></i> Сброс через (часов)</label>
+                    <input type="number" class="form-input" id="task-reset-hours-input" placeholder="Например: 24" min="1" max="168" value="24">
+                    <div style="font-size:0.78em;color:#888;margin-top:5px;"><i class="fa-solid fa-info-circle"></i> Через сколько часов задание снова станет доступным</div>
+                </div>
+            </div>
+
             <!-- Video fields -->
             <div id="task-video-fields">
                 <div class="form-group">
@@ -3206,6 +3234,8 @@
         const TASK_TYPE_LABELS = { video: 'Видео', subscription: 'Подписка', other: 'Другое', ad_reward: 'Реклама (Reward)', ad_task: 'Задание (Adsgram)' };
         const TASK_TYPE_COLORS = { video: '#e17055', subscription: '#0984e3', other: '#6c5ce7', ad_reward: '#d63031', ad_task: '#6c5ce7' };
         const TASK_TYPE_ICONS = { video: 'fa-play', subscription: 'fa-paper-plane', other: 'fa-arrow-up-right-from-square', ad_reward: 'fa-tv', ad_task: 'fa-list-check' };
+        const TASK_FREQ_LABELS = { one_time: '🎯 Одиночное', daily: '🔄 Ежедневное' };
+        const TASK_FREQ_COLORS = { one_time: '#6c5ce7', daily: '#00b894' };
 
         function renderAdminTasks(tasks) {
             const list = document.getElementById('admin-tasks-list');
@@ -3247,6 +3277,7 @@
                     <div class="promo-badges">
                         <span class="promo-badge" style="background:rgba(108,92,231,0.1);color:var(--primary);border:1px solid rgba(108,92,231,0.2);"><i class="fa-solid fa-coins"></i> +${t.reward} монет</span>
                         <span class="promo-badge" style="background:rgba(0,0,0,0.05);color:${typeColor};border:1px solid rgba(0,0,0,0.08);"><i class="fa-solid ${typeIcon}"></i> ${typeLabel}</span>
+                        ${(() => { const freq = t.task_frequency || 'one_time'; const fc = TASK_FREQ_COLORS[freq]||'#888'; const fl = TASK_FREQ_LABELS[freq]||freq; const rh = freq==='daily'?` · ${t.reset_hours||24}ч`:''; return `<span class="promo-badge" style="background:rgba(0,0,0,0.04);color:${fc};border:1px solid rgba(0,0,0,0.07);">${fl}${rh}</span>`; })()}
                     </div>
                     <div class="promo-actions">
                         <button class="btn-promo-delete" onclick="openTaskDeleteModal(${t.id}, '${escHtml(t.name).replace(/'/g,"\\'")}')">
@@ -3255,6 +3286,12 @@
                     </div>
                 </div>`;
             }).join('');
+        }
+
+        function onFreqChange(val) {
+            document.getElementById('task-reset-hours-fields').style.display = val === 'daily' ? 'block' : 'none';
+            document.getElementById('freq-one-label').style.borderColor = val === 'one_time' ? '#6c5ce7' : '#e0e7ef';
+            document.getElementById('freq-daily-label').style.borderColor = val === 'daily' ? '#00b894' : '#e0e7ef';
         }
 
         function openAddTaskModal() {
@@ -3267,8 +3304,12 @@
             document.getElementById('task-btn-text-input').value = '';
             document.getElementById('task-btn-url-input').value = '';
             document.getElementById('task-ad-block-id-input').value = '';
+            document.getElementById('task-reset-hours-input').value = '24';
+            document.getElementById('freq-one').checked = true;
+            document.getElementById('freq-daily').checked = false;
             document.getElementById('task-create-error').style.display = 'none';
             onTaskTypeChange('video');
+            onFreqChange('one_time');
             document.getElementById('add-task-modal').classList.add('open');
         }
 
@@ -3325,6 +3366,8 @@
 
             // For ad_reward / ad_task, store block ID in button_url field
             const finalButtonUrl = (taskType === 'ad_reward' || taskType === 'ad_task') ? adBlockId : buttonUrl;
+            const taskFrequency = document.querySelector('input[name="task-frequency"]:checked')?.value || 'one_time';
+            const resetHours = parseInt(document.getElementById('task-reset-hours-input').value) || 24;
 
             try {
                 const res = await fetch('/api/admin/tasks/create', {
@@ -3334,7 +3377,8 @@
                         admin_id: Number(adminId),
                         name, photo_url: photoUrl, reward, task_type: taskType,
                         video_url: videoUrl, channel_link: channelLink,
-                        button_text: buttonText, button_url: finalButtonUrl
+                        button_text: buttonText, button_url: finalButtonUrl,
+                        task_frequency: taskFrequency, reset_hours: resetHours
                     })
                 });
                 const d = await res.json();
