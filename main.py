@@ -2280,7 +2280,7 @@ def admin_users():
                 SELECT telegram_id, username, first_name, nick, balance,
                        referral_count, event_referral_count, status, created_at,
                        is_blocked, block_reason, premium_until
-                FROM users ORDER BY balance DESC LIMIT 100
+                FROM users ORDER BY balance DESC
             """)
         users = [dict(u) for u in cur.fetchall()]
         for u in users:
