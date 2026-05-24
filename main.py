@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import random
 import re
 import threading
 import time
@@ -11,7 +12,7 @@ import psycopg2.extras
 from flask import Flask, render_template, request, Response, jsonify
 from flask_cors import CORS
 import requests as http_requests
-from aiogram import Bot, Dispatcher, F
+from aiogram import Bot, Dispatcher, F, BaseMiddleware
 from aiogram.types import (
     Message,
     CallbackQuery,
@@ -20,9 +21,11 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     WebAppInfo,
     LabeledPrice,
+    TelegramObject,
 )
 from aiogram.filters import CommandStart, CommandObject, Command
 from aiogram.exceptions import TelegramAPIError
+from typing import Callable, Awaitable, Any
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,17 +57,15 @@ REQUIRED_CHANNELS = {
 # 1 = chain:  inviter gets coins only after their friend also invites someone
 REFERRAL_MODE = 0
 
-MENU = (
-    ""
-)
+MENU = ""
 
 MENU_TEXT = (
-    "<tg-emoji emoji-id=\"5413694143601842851\">👋</tg-emoji> <b><u>Добро пожаловать в лучший реферальный бот — NodeLink! </u><tg-emoji emoji-id=\"5463071033256848094\">🔝</tg-emoji>\n\n"
-    "<tg-emoji emoji-id=\"5346123450358444391\">🤑</tg-emoji> Зарабатывай по 5 коинов (HolyWorld Lite) за каждого приглашённого друга — быстро, просто и без ограничений!\n"
-"А хочешь ещё больше? Выполняй задания и получай ещё более ценные награды! <tg-emoji emoji-id=\"5282843764451195532\">💰</tg-emoji>\n\n"
-    "<tg-emoji emoji-id=\"5188481279963715781\">🚀</tg-emoji> Поделись своей реферальной ссылкой и наблюдай, как растёт твой баланс.\n"
-"Все заработанные монеты ты можешь тратить на коины, товары и привилегии на сервере HolyWorld Lite! <tg-emoji emoji-id=\"5345959142089573046\">🔗</tg-emoji>\n\n"
-    "<tg-emoji emoji-id=\"5278467510604160626\">💸</tg-emoji> Выбирай нужные кнопки ниже и начинай путь к большим заработкам!</b>"
+    '<tg-emoji emoji-id="5413694143601842851">👋</tg-emoji> <b><u>Добро пожаловать в лучший реферальный бот — NodeLink! </u><tg-emoji emoji-id="5463071033256848094">🔝</tg-emoji>\n\n'
+    '<tg-emoji emoji-id="5346123450358444391">🤑</tg-emoji> Зарабатывай по 5 коинов (HolyWorld Lite) за каждого приглашённого друга — быстро, просто и без ограничений!\n'
+    'А хочешь ещё больше? Выполняй задания и получай ещё более ценные награды! <tg-emoji emoji-id="5282843764451195532">💰</tg-emoji>\n\n'
+    '<tg-emoji emoji-id="5188481279963715781">🚀</tg-emoji> Поделись своей реферальной ссылкой и наблюдай, как растёт твой баланс.\n'
+    'Все заработанные монеты ты можешь тратить на коины, товары и привилегии на сервере HolyWorld Lite! <tg-emoji emoji-id="5345959142089573046">🔗</tg-emoji>\n\n'
+    '<tg-emoji emoji-id="5278467510604160626">💸</tg-emoji> Выбирай нужные кнопки ниже и начинай путь к большим заработкам!</b>'
 )
 
 MENU_PHOTO = os.getenv(
@@ -101,6 +102,24 @@ ADMIN_IDS = {7592032451}
 ADMIN_PASSWORD = "789456123"
 
 pending_inviters: dict[int, int] = {}
+
+# Captcha storage: {user_id: {"level": 1, "correct": "🐱", "inviter_id": None}}
+pending_captcha: dict[int, dict] = {}
+
+# {user_id: unix_timestamp_when_unblocked}
+captcha_cooldown: dict[int, float] = {}
+
+CAPTCHA_MAX_FAILS = 5
+CAPTCHA_COOLDOWN_SECONDS = 15 * 60  # 15 минут
+
+CAPTCHA_EMOJIS = [
+    "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨",
+    "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦",
+    "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝",
+    "🐛", "🦋", "🐌", "🐞", "🐜", "🐢", "🐍", "🦎", "🦕",
+    "🐙", "🦑", "🐡", "🐠", "🐟", "🐬", "🐳", "🦈", "🐊",
+    "🦭", "🦒", "🦓", "🦏", "🦛", "🐘", "🐪", "🐫", "🦘",
+]
 
 app = Flask(__name__)
 CORS(app)
@@ -268,18 +287,31 @@ def finalize_event():
         winner_ids_set = {w["telegram_id"] for w in winners}
 
         def _build_event_end_broadcast_text():
-            lines = ["<tg-emoji emoji-id=\"5217822164362739968\">👑</tg-emoji> <b>Еженедельный ивент завершён!</b>\n"]
+            lines = [
+                '<tg-emoji emoji-id="5217822164362739968">👑</tg-emoji> <b>Еженедельный ивент завершён!</b>\n'
+            ]
             if winners:
-                lines.append("<tg-emoji emoji-id=\"5217822164362739968\">🏆</tg-emoji> <b>Победители недели:</b>")
+                lines.append(
+                    '<tg-emoji emoji-id="5217822164362739968">🏆</tg-emoji> <b>Победители недели:</b>'
+                )
                 for idx, w in enumerate(winners):
                     medal = MEDAL.get(idx + 1, "")
-                    nick = w["nick"] or w["first_name"] or w["username"] or str(w["telegram_id"])
+                    nick = (
+                        w["nick"]
+                        or w["first_name"]
+                        or w["username"]
+                        or str(w["telegram_id"])
+                    )
                     uname = f" (@{w['username']})" if w["username"] else ""
-                    lines.append(f"{medal} {nick}{uname} — {w['event_referral_count']} приглашений")
+                    lines.append(
+                        f"{medal} {nick}{uname} — {w['event_referral_count']} приглашений"
+                    )
             else:
                 lines.append("В этом ивенте никто не пригласил друзей.")
             lines.append("")
-            lines.append("<tg-emoji emoji-id=\"5193018401810822951\">🎉</tg-emoji> <b>Новый ивент уже начался!</b> Приглашайте друзей и попадайте в топ!")
+            lines.append(
+                '<tg-emoji emoji-id="5193018401810822951">🎉</tg-emoji> <b>Новый ивент уже начался!</b> Приглашайте друзей и попадайте в топ!'
+            )
             return "\n".join(lines)
 
         broadcast_text = _build_event_end_broadcast_text()
@@ -317,10 +349,14 @@ def finalize_event():
 
 def _send_event_announcement(winners: list):
     """Build and send the event results message to the announcement channel."""
-    lines = ["<tg-emoji emoji-id=\"5217822164362739968\">👑</tg-emoji> <b>Еженедельный ивент завершён!</b>\n"]
+    lines = [
+        '<tg-emoji emoji-id="5217822164362739968">👑</tg-emoji> <b>Еженедельный ивент завершён!</b>\n'
+    ]
 
     if winners:
-        lines.append("<tg-emoji emoji-id=\"5217822164362739968\">🏆</tg-emoji> <b>Победители:</b>")
+        lines.append(
+            '<tg-emoji emoji-id="5217822164362739968">🏆</tg-emoji> <b>Победители:</b>'
+        )
         for idx, w in enumerate(winners):
             medal = MEDAL.get(idx + 1, "")
             nick = (
@@ -334,16 +370,26 @@ def _send_event_announcement(winners: list):
 
     lines.append("")
     lines.append(
-        "<tg-emoji emoji-id=\"5193018401810822951\">🎉</tg-emoji> <b>Новый ивент уже начался!</b> Приглашайте друзей, чтобы попасть в топ!"
+        '<tg-emoji emoji-id="5193018401810822951">🎉</tg-emoji> <b>Новый ивент уже начался!</b> Приглашайте друзей, чтобы попасть в топ!'
     )
     lines.append("")
     lines.append("▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬")
-    lines.append("<tg-emoji emoji-id=\"5431420156532235514\">⚜️</tg-emoji> <b>Призы за ТОП-3:</b>")
-    lines.append("<tg-emoji emoji-id=\"5440539497383087970\">🥇</tg-emoji> 1 место — 150 коинов")
-    lines.append("<tg-emoji emoji-id=\"5447203607294265305\">🥈</tg-emoji> 2 место — 100 коинов")
-    lines.append("<tg-emoji emoji-id=\"5453902265922376865\">🥉</tg-emoji> 3 место — 50 коинов")
+    lines.append(
+        '<tg-emoji emoji-id="5431420156532235514">⚜️</tg-emoji> <b>Призы за ТОП-3:</b>'
+    )
+    lines.append(
+        '<tg-emoji emoji-id="5440539497383087970">🥇</tg-emoji> 1 место — 150 коинов'
+    )
+    lines.append(
+        '<tg-emoji emoji-id="5447203607294265305">🥈</tg-emoji> 2 место — 100 коинов'
+    )
+    lines.append(
+        '<tg-emoji emoji-id="5453902265922376865">🥉</tg-emoji> 3 место — 50 коинов'
+    )
     lines.append("")
-    lines.append("<tg-emoji emoji-id=\"5397782088634081594\">🔹</tg-emoji> Итоги подводятся каждое воскресенье в 17:00 (МСК)")
+    lines.append(
+        '<tg-emoji emoji-id="5397782088634081594">🔹</tg-emoji> Итоги подводятся каждое воскресенье в 17:00 (МСК)'
+    )
 
     text = "\n".join(lines)
 
@@ -426,6 +472,10 @@ def init_db():
 
     cur.execute("""
         ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until TIMESTAMPTZ
+    """)
+
+    cur.execute("""
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ
     """)
 
     cur.execute("""
@@ -561,23 +611,6 @@ def init_db():
     """)
 
     cur.execute("""
-        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_frequency TEXT DEFAULT 'one_time'
-    """)
-    cur.execute("""
-        ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reset_hours INTEGER DEFAULT 24
-    """)
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS daily_task_completions (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT NOT NULL,
-            task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-            completed_at TIMESTAMPTZ DEFAULT NOW(),
-            reset_at TIMESTAMPTZ NOT NULL
-        )
-    """)
-
-    cur.execute("""
         CREATE TABLE IF NOT EXISTS task_completions (
             id SERIAL PRIMARY KEY,
             user_id BIGINT NOT NULL REFERENCES users(telegram_id),
@@ -594,64 +627,487 @@ def init_db():
     catalog = [
         # id, name, category, price, description, icon, color, sort_order
         # Коины — каждый в своём цвете
-        (103, "🌕 25 Коинов",   "currency", 25,  "25 коинов на игровой счёт — начни тратить с выгодой!",                      "fa-solid fa-coins", "blue",   103),
-        (104, "🌕 35 Коинов",   "currency", 35,  "35 коинов — отличный старт для новичка.",                                   "fa-solid fa-coins", "orange", 104),
-        (105, "🌕 50 Коинов",   "currency", 45,  "50 коинов по выгодной цене. Экономия 10%!",                                 "fa-solid fa-coins", "yellow", 105),
-        (106, "🌕 65 Коинов",   "currency", 55,  "65 коинов — больше возможностей в HolyWorld.",                              "fa-solid fa-coins", "orange", 106),
-        (107, "🌕 80 Коинов",   "currency", 75,  "80 коинов с хорошей скидкой. Успей взять!",                                 "fa-solid fa-coins", "pink",   107),
-        (108, "🌕 100 Коинов",  "currency", 80,  "100 коинов — выгоднее на 20% по сравнению с поштучной покупкой!",           "fa-solid fa-coins", "purple", 108),
-        (109, "🌕 150 Коинов",  "currency", 120, "150 коинов оптом — серьёзная экономия для опытных игроков.",                "fa-solid fa-coins", "pink",   109),
-        (110, "🌕 200 Коинов",  "currency", 150, "200 коинов по максимально выгодной цене!",                                  "fa-solid fa-coins", "yellow", 110),
+        (
+            103,
+            "🌕 25 Коинов",
+            "currency",
+            25,
+            "25 коинов на игровой счёт — начни тратить с выгодой!",
+            "fa-solid fa-coins",
+            "blue",
+            103,
+        ),
+        (
+            104,
+            "🌕 35 Коинов",
+            "currency",
+            35,
+            "35 коинов — отличный старт для новичка.",
+            "fa-solid fa-coins",
+            "orange",
+            104,
+        ),
+        (
+            105,
+            "🌕 50 Коинов",
+            "currency",
+            45,
+            "50 коинов по выгодной цене. Экономия 10%!",
+            "fa-solid fa-coins",
+            "yellow",
+            105,
+        ),
+        (
+            106,
+            "🌕 65 Коинов",
+            "currency",
+            55,
+            "65 коинов — больше возможностей в HolyWorld.",
+            "fa-solid fa-coins",
+            "orange",
+            106,
+        ),
+        (
+            107,
+            "🌕 80 Коинов",
+            "currency",
+            75,
+            "80 коинов с хорошей скидкой. Успей взять!",
+            "fa-solid fa-coins",
+            "pink",
+            107,
+        ),
+        (
+            108,
+            "🌕 100 Коинов",
+            "currency",
+            80,
+            "100 коинов — выгоднее на 20% по сравнению с поштучной покупкой!",
+            "fa-solid fa-coins",
+            "purple",
+            108,
+        ),
+        (
+            109,
+            "🌕 150 Коинов",
+            "currency",
+            120,
+            "150 коинов оптом — серьёзная экономия для опытных игроков.",
+            "fa-solid fa-coins",
+            "pink",
+            109,
+        ),
+        (
+            110,
+            "🌕 200 Коинов",
+            "currency",
+            150,
+            "200 коинов по максимально выгодной цене!",
+            "fa-solid fa-coins",
+            "yellow",
+            110,
+        ),
         # Кейсы — чередуем цвета
-        (401, "🎁 Кейс с донатом [Без удачи]",   "cases", 120, "Рандомный донат внутри — стандартный шанс на выигрыш.",                  "fa-solid fa-gift",     "blue",   401),
-        (402, "🎁 Кейс с донатом [Удача +15%]",  "cases", 140, "Кейс с донатом и повышенным шансом удачи +15%.",                        "fa-solid fa-gift",     "green",  402),
-        (403, "🎁 Кейс с донатом [Удача +30%]",  "cases", 160, "Максимальная удача +30% — лучший шанс выбить ценный донат.",            "fa-solid fa-gift",     "orange", 403),
-        (404, "🗳 Кейс с сапфирами [3 штуки]",   "cases",  70, "3 сапфира случайного номинала в одном кейсе.",                          "fa-solid fa-box-open", "teal",   404),
-        (405, "🗳 Кейс с сапфирами [10 штук]",   "cases", 220, "10 сапфиров в кейсе — отличный выбор для коллекционеров.",              "fa-solid fa-box-open", "purple", 405),
-        (406, "🗳 Кейс с сапфирами [25 штук]",   "cases", 480, "25 сапфиров из кейса — максимальный запас!",                            "fa-solid fa-box-open", "pink",   406),
+        (
+            401,
+            "🎁 Кейс с донатом [Без удачи]",
+            "cases",
+            120,
+            "Рандомный донат внутри — стандартный шанс на выигрыш.",
+            "fa-solid fa-gift",
+            "blue",
+            401,
+        ),
+        (
+            402,
+            "🎁 Кейс с донатом [Удача +15%]",
+            "cases",
+            140,
+            "Кейс с донатом и повышенным шансом удачи +15%.",
+            "fa-solid fa-gift",
+            "green",
+            402,
+        ),
+        (
+            403,
+            "🎁 Кейс с донатом [Удача +30%]",
+            "cases",
+            160,
+            "Максимальная удача +30% — лучший шанс выбить ценный донат.",
+            "fa-solid fa-gift",
+            "orange",
+            403,
+        ),
+        (
+            404,
+            "🗳 Кейс с сапфирами [3 штуки]",
+            "cases",
+            70,
+            "3 сапфира случайного номинала в одном кейсе.",
+            "fa-solid fa-box-open",
+            "teal",
+            404,
+        ),
+        (
+            405,
+            "🗳 Кейс с сапфирами [10 штук]",
+            "cases",
+            220,
+            "10 сапфиров в кейсе — отличный выбор для коллекционеров.",
+            "fa-solid fa-box-open",
+            "purple",
+            405,
+        ),
+        (
+            406,
+            "🗳 Кейс с сапфирами [25 штук]",
+            "cases",
+            480,
+            "25 сапфиров из кейса — максимальный запас!",
+            "fa-solid fa-box-open",
+            "pink",
+            406,
+        ),
         # Сапфиры — плавный переход от teal к purple
-        (501, "💎 100 Сапфиров",   "sapphires",   25, "100 сапфиров для внутриигровых улучшений на HolyWorld.",                "fa-regular fa-gem", "teal",   501),
-        (502, "💎 250 Сапфиров",   "sapphires",   55, "250 сапфиров — больше возможностей для развития.",                      "fa-regular fa-gem", "green",  502),
-        (503, "💎 500 Сапфиров",   "sapphires",  100, "500 сапфиров — крупный пакет по выгодной цене.",                        "fa-regular fa-gem", "blue",   503),
-        (504, "💎 1000 Сапфиров",  "sapphires",  200, "1000 сапфиров — серьёзный запас для любого игрока.",                    "fa-regular fa-gem", "teal",   504),
-        (505, "💎 2500 Сапфиров",  "sapphires",  480, "2500 сапфиров оптом — экономия 15%!",                                   "fa-regular fa-gem", "blue",   505),
-        (506, "💎 5000 Сапфиров",  "sapphires",  950, "5000 сапфиров — выгодная закупка для хардкор-игроков.",                 "fa-regular fa-gem", "purple", 506),
-        (507, "💎 7500 Сапфиров",  "sapphires", 1400, "7500 сапфиров — крупнейший пакет по лучшей цене.",                      "fa-regular fa-gem", "orange", 507),
-        (508, "💎 12500 Сапфиров", "sapphires", 2300, "12500 сапфиров — элитный запас со скидкой.",                            "fa-regular fa-gem", "pink",   508),
-        (509, "💎 25000 Сапфиров", "sapphires", 4390, "25000 сапфиров — максимальный пакет для настоящих ценителей.",          "fa-regular fa-gem", "purple", 509),
+        (
+            501,
+            "💎 100 Сапфиров",
+            "sapphires",
+            25,
+            "100 сапфиров для внутриигровых улучшений на HolyWorld.",
+            "fa-regular fa-gem",
+            "teal",
+            501,
+        ),
+        (
+            502,
+            "💎 250 Сапфиров",
+            "sapphires",
+            55,
+            "250 сапфиров — больше возможностей для развития.",
+            "fa-regular fa-gem",
+            "green",
+            502,
+        ),
+        (
+            503,
+            "💎 500 Сапфиров",
+            "sapphires",
+            100,
+            "500 сапфиров — крупный пакет по выгодной цене.",
+            "fa-regular fa-gem",
+            "blue",
+            503,
+        ),
+        (
+            504,
+            "💎 1000 Сапфиров",
+            "sapphires",
+            200,
+            "1000 сапфиров — серьёзный запас для любого игрока.",
+            "fa-regular fa-gem",
+            "teal",
+            504,
+        ),
+        (
+            505,
+            "💎 2500 Сапфиров",
+            "sapphires",
+            480,
+            "2500 сапфиров оптом — экономия 15%!",
+            "fa-regular fa-gem",
+            "blue",
+            505,
+        ),
+        (
+            506,
+            "💎 5000 Сапфиров",
+            "sapphires",
+            950,
+            "5000 сапфиров — выгодная закупка для хардкор-игроков.",
+            "fa-regular fa-gem",
+            "purple",
+            506,
+        ),
+        (
+            507,
+            "💎 7500 Сапфиров",
+            "sapphires",
+            1400,
+            "7500 сапфиров — крупнейший пакет по лучшей цене.",
+            "fa-regular fa-gem",
+            "orange",
+            507,
+        ),
+        (
+            508,
+            "💎 12500 Сапфиров",
+            "sapphires",
+            2300,
+            "12500 сапфиров — элитный запас со скидкой.",
+            "fa-regular fa-gem",
+            "pink",
+            508,
+        ),
+        (
+            509,
+            "💎 25000 Сапфиров",
+            "sapphires",
+            4390,
+            "25000 сапфиров — максимальный пакет для настоящих ценителей.",
+            "fa-regular fa-gem",
+            "purple",
+            509,
+        ),
         # Звёзды — подарки через Telegram Stars
-        (701, "❤️ Сердечко",     "stars",  25, "Подарок «Сердечко» — отправь звёздный подарок другу в Telegram.",     "fa-solid fa-heart",                "pink",   701),
-        (702, "🧸 Мишка",        "stars",  25, "Подарок «Мишка» — милый плюшевый мишка в качестве звёздного подарка.", "fa-solid fa-paw",                  "orange", 702),
-        (703, "🎁 Подарок",      "stars",  45, "Подарок «Подарок» — яркая коробка с сюрпризом для твоего друга.",      "fa-solid fa-gift",                 "yellow", 703),
-        (704, "🌹 Роза",         "stars",  45, "Подарок «Роза» — красная роза как знак внимания в Telegram.",          "fa-solid fa-seedling",             "pink",   704),
-        (705, "🎂 Торт",         "stars",  85, "Подарок «Торт» — праздничный торт со свечами для именинника.",         "fa-solid fa-cake-candles",         "pink",   705),
-        (706, "💐 Цветы",        "stars",  85, "Подарок «Цветы» — букет цветов для особого случая.",                   "fa-solid fa-leaf",                 "green",  706),
-        (707, "🚀 Ракета",       "stars",  85, "Подарок «Ракета» — стремительный подарок для активных игроков.",       "fa-solid fa-rocket",               "blue",   707),
-        (708, "🍾 Шампанское",   "stars",  85, "Подарок «Шампанское» — праздничная бутылка для торжества.",            "fa-solid fa-wine-bottle",          "green",  708),
-        (709, "🏆 Кубок",        "stars", 170, "Подарок «Кубок» — золотой трофей для настоящего победителя.",         "fa-solid fa-trophy",               "yellow", 709),
-        (710, "💍 Кольцо",       "stars", 170, "Подарок «Кольцо» — изысканное кольцо с бриллиантом.",                 "fa-solid fa-ring",                 "teal",   710),
-        (711, "💎 Алмаз",        "stars", 170, "Подарок «Алмаз» — сверкающий алмаз — самый ценный подарок!",          "fa-regular fa-gem",                "blue",   711),
+        (
+            701,
+            "❤️ Сердечко",
+            "stars",
+            25,
+            "Подарок «Сердечко» — отправь звёздный подарок другу в Telegram.",
+            "fa-solid fa-heart",
+            "pink",
+            701,
+        ),
+        (
+            702,
+            "🧸 Мишка",
+            "stars",
+            25,
+            "Подарок «Мишка» — милый плюшевый мишка в качестве звёздного подарка.",
+            "fa-solid fa-paw",
+            "orange",
+            702,
+        ),
+        (
+            703,
+            "🎁 Подарок",
+            "stars",
+            45,
+            "Подарок «Подарок» — яркая коробка с сюрпризом для твоего друга.",
+            "fa-solid fa-gift",
+            "yellow",
+            703,
+        ),
+        (
+            704,
+            "🌹 Роза",
+            "stars",
+            45,
+            "Подарок «Роза» — красная роза как знак внимания в Telegram.",
+            "fa-solid fa-seedling",
+            "pink",
+            704,
+        ),
+        (
+            705,
+            "🎂 Торт",
+            "stars",
+            85,
+            "Подарок «Торт» — праздничный торт со свечами для именинника.",
+            "fa-solid fa-cake-candles",
+            "pink",
+            705,
+        ),
+        (
+            706,
+            "💐 Цветы",
+            "stars",
+            85,
+            "Подарок «Цветы» — букет цветов для особого случая.",
+            "fa-solid fa-leaf",
+            "green",
+            706,
+        ),
+        (
+            707,
+            "🚀 Ракета",
+            "stars",
+            85,
+            "Подарок «Ракета» — стремительный подарок для активных игроков.",
+            "fa-solid fa-rocket",
+            "blue",
+            707,
+        ),
+        (
+            708,
+            "🍾 Шампанское",
+            "stars",
+            85,
+            "Подарок «Шампанское» — праздничная бутылка для торжества.",
+            "fa-solid fa-wine-bottle",
+            "green",
+            708,
+        ),
+        (
+            709,
+            "🏆 Кубок",
+            "stars",
+            170,
+            "Подарок «Кубок» — золотой трофей для настоящего победителя.",
+            "fa-solid fa-trophy",
+            "yellow",
+            709,
+        ),
+        (
+            710,
+            "💍 Кольцо",
+            "stars",
+            170,
+            "Подарок «Кольцо» — изысканное кольцо с бриллиантом.",
+            "fa-solid fa-ring",
+            "teal",
+            710,
+        ),
+        (
+            711,
+            "💎 Алмаз",
+            "stars",
+            170,
+            "Подарок «Алмаз» — сверкающий алмаз — самый ценный подарок!",
+            "fa-regular fa-gem",
+            "blue",
+            711,
+        ),
         # Прочие — у каждый своём цвете
-        (601, "📁 PREMIUM+ [30 дней]",        "others", 260, "30 дней PREMIUM+ статуса на сервере HolyWorld Lite.",                       "fa-solid fa-folder-open", "orange", 601),
-        (602, "📁 Восстановление аккаунта",   "others", 250, "Восстановление потерянного игрового аккаунта по запросу администрации.",   "fa-solid fa-rotate-left", "blue",   602),
-        (603, "📁 Перенос доната",            "others", 250, "Перенос приобретённого доната на другой аккаунт или сервер.",              "fa-solid fa-right-left",  "green",  603),
-        (605, "📁 Разбан",                    "others", 200, "Снятие бана с игрового аккаунта на HolyWorld.",                            "fa-solid fa-lock-open",   "teal",   605),
-        (606, "📁 Размут",                    "others", 100, "Снятие мута (запрета на общение) в игре или на сервере.",                  "fa-solid fa-microphone",  "purple", 606),
+        (
+            601,
+            "📁 PREMIUM+ [30 дней]",
+            "others",
+            260,
+            "30 дней PREMIUM+ статуса на сервере HolyWorld Lite.",
+            "fa-solid fa-folder-open",
+            "orange",
+            601,
+        ),
+        (
+            602,
+            "📁 Восстановление аккаунта",
+            "others",
+            250,
+            "Восстановление потерянного игрового аккаунта по запросу администрации.",
+            "fa-solid fa-rotate-left",
+            "blue",
+            602,
+        ),
+        (
+            603,
+            "📁 Перенос доната",
+            "others",
+            250,
+            "Перенос приобретённого доната на другой аккаунт или сервер.",
+            "fa-solid fa-right-left",
+            "green",
+            603,
+        ),
+        (
+            605,
+            "📁 Разбан",
+            "others",
+            200,
+            "Снятие бана с игрового аккаунта на HolyWorld.",
+            "fa-solid fa-lock-open",
+            "teal",
+            605,
+        ),
+        (
+            606,
+            "📁 Размут",
+            "others",
+            100,
+            "Снятие мута (запрета на общение) в игре или на сервере.",
+            "fa-solid fa-microphone",
+            "purple",
+            606,
+        ),
         # Привилегии — цвета растут вместе с рангом
-        (12,  "⚜️ Мустанг [1 мес]",          "privileges",   60, "Привилегия Мустанг на 1 месяц — расширенные игровые возможности.",               "fa-solid fa-shield-halved","teal",   12),
-        (13,  "⚜️ Гаст [1 мес]",             "privileges",  180, "Привилегия Гаст на 1 месяц — для опытных и уважаемых игроков.",                  "fa-solid fa-medal",        "blue",   13),
-        (14,  "⚜️ Визер [1 мес]",            "privileges",  390, "Привилегия Визер на 1 месяц — высокий уровень привилегий сервера.",               "fa-solid fa-crown",        "purple", 14),
-        (15,  "⚜️ Кракен [1 мес]",           "privileges",  760, "Привилегия Кракен на 1 месяц — элитный статус с особыми бонусами.",               "fa-solid fa-crown",        "orange", 15),
-        (16,  "⚜️ Драгон [1 мес]",           "privileges", 1000, "Привилегия Драгон на 1 месяц — легендарный доступ и возможности.",                "fa-solid fa-fire",         "orange", 16),
-        (17,  "⚜️ Стингер [1 мес]",          "privileges", 1390, "Привилегия Стингер на 1 месяц — мощные бонусы для самых активных.",               "fa-solid fa-bolt",         "yellow", 17),
-        (18,  "⚜️ Етернити [1 мес]",         "privileges", 2190, "Привилегия Етернити на 1 месяц — максимальный статус на сервере.",                 "fa-solid fa-infinity",     "pink",   18),
-        (19,  "⚜️ Кастомный Донат [1 мес]",  "privileges", 3290, "Персональный кастомный донат на 1 месяц — уникальный пакет привилегий.",           "fa-solid fa-star",         "yellow", 19),
+        (
+            12,
+            "⚜️ Мустанг [1 мес]",
+            "privileges",
+            60,
+            "Привилегия Мустанг на 1 месяц — расширенные игровые возможности.",
+            "fa-solid fa-shield-halved",
+            "teal",
+            12,
+        ),
+        (
+            13,
+            "⚜️ Гаст [1 мес]",
+            "privileges",
+            180,
+            "Привилегия Гаст на 1 месяц — для опытных и уважаемых игроков.",
+            "fa-solid fa-medal",
+            "blue",
+            13,
+        ),
+        (
+            14,
+            "⚜️ Визер [1 мес]",
+            "privileges",
+            390,
+            "Привилегия Визер на 1 месяц — высокий уровень привилегий сервера.",
+            "fa-solid fa-crown",
+            "purple",
+            14,
+        ),
+        (
+            15,
+            "⚜️ Кракен [1 мес]",
+            "privileges",
+            760,
+            "Привилегия Кракен на 1 месяц — элитный статус с особыми бонусами.",
+            "fa-solid fa-crown",
+            "orange",
+            15,
+        ),
+        (
+            16,
+            "⚜️ Драгон [1 мес]",
+            "privileges",
+            1000,
+            "Привилегия Драгон на 1 месяц — легендарный доступ и возможности.",
+            "fa-solid fa-fire",
+            "orange",
+            16,
+        ),
+        (
+            17,
+            "⚜️ Стингер [1 мес]",
+            "privileges",
+            1390,
+            "Привилегия Стингер на 1 месяц — мощные бонусы для самых активных.",
+            "fa-solid fa-bolt",
+            "yellow",
+            17,
+        ),
+        (
+            18,
+            "⚜️ Етернити [1 мес]",
+            "privileges",
+            2190,
+            "Привилегия Етернити на 1 месяц — максимальный статус на сервере.",
+            "fa-solid fa-infinity",
+            "pink",
+            18,
+        ),
+        (
+            19,
+            "⚜️ Кастомный Донат [1 мес]",
+            "privileges",
+            3290,
+            "Персональный кастомный донат на 1 месяц — уникальный пакет привилегий.",
+            "fa-solid fa-star",
+            "yellow",
+            19,
+        ),
     ]
     new_ids = tuple(p[0] for p in catalog)
     # Remove obsolete products (no existing purchases referencing them)
     cur.execute(
         "DELETE FROM products WHERE id NOT IN %s AND id NOT IN (SELECT DISTINCT product_id FROM purchases)",
-        (new_ids,)
+        (new_ids,),
     )
     # Upsert: insert or update all catalog entries
     for p in catalog:
@@ -665,7 +1121,9 @@ def init_db():
             p,
         )
     # Advance sequence past all explicit IDs so admin-added products don't collide
-    cur.execute("SELECT setval('products_id_seq', GREATEST(nextval('products_id_seq'), 10000))")
+    cur.execute(
+        "SELECT setval('products_id_seq', GREATEST(nextval('products_id_seq'), 10000))"
+    )
 
     # Seed a test promo code
     cur.execute("SELECT COUNT(*) FROM promo_codes")
@@ -753,7 +1211,9 @@ def enforce_block_on_api():
     try:
         is_blocked, block_reason = get_user_block_status(int(telegram_id))
         if is_blocked:
-            return jsonify({"error": "blocked", "is_blocked": True, "block_reason": block_reason}), 403
+            return jsonify(
+                {"error": "blocked", "is_blocked": True, "block_reason": block_reason}
+            ), 403
     except Exception:
         pass
     return None
@@ -792,10 +1252,12 @@ def register_user():
         if existing and existing.get("is_blocked"):
             cur.close()
             conn.close()
-            return jsonify({
-                "is_blocked": True,
-                "block_reason": existing.get("block_reason"),
-            })
+            return jsonify(
+                {
+                    "is_blocked": True,
+                    "block_reason": existing.get("block_reason"),
+                }
+            )
 
         cur.execute(
             """
@@ -1349,7 +1811,7 @@ def admin_reject_order(order_id):
         conn.commit()
         cur.close()
         conn.close()
-        msg = f"<tg-emoji emoji-id=\"5465665476971471368\">❌</tg-emoji> Ваш заказ #{order_id} ({order['item_name']}) отклонён."
+        msg = f'<tg-emoji emoji-id="5465665476971471368">❌</tg-emoji> Ваш заказ #{order_id} ({order["item_name"]}) отклонён.'
         if refund_price > 0:
             msg += f" Монеты ({refund_price}) возвращены на ваш баланс."
         send_telegram_message(order["user_id"], msg)
@@ -1812,46 +2274,19 @@ def get_tasks():
         for t in tasks:
             if t.get("created_at"):
                 t["created_at"] = t["created_at"].isoformat()
-            t["task_frequency"] = t.get("task_frequency") or "one_time"
-            t["reset_hours"] = t.get("reset_hours") or 24
-
         completed_ids = set()
-        daily_cooldowns = {}  # task_id -> reset_at isoformat
         if user_id:
             try:
                 uid = int(user_id)
-                # one_time completions
                 cur.execute(
                     "SELECT task_id FROM task_completions WHERE user_id = %s",
                     (uid,),
                 )
                 completed_ids = {row["task_id"] for row in cur.fetchall()}
-                # daily cooldowns — find most recent completion per task
-                cur.execute(
-                    """
-                    SELECT DISTINCT ON (task_id) task_id, reset_at
-                    FROM daily_task_completions
-                    WHERE user_id = %s
-                    ORDER BY task_id, completed_at DESC
-                    """,
-                    (uid,),
-                )
-                now_utc = datetime.now(timezone.utc)
-                for row in cur.fetchall():
-                    if row["reset_at"] and row["reset_at"] > now_utc:
-                        daily_cooldowns[row["task_id"]] = row["reset_at"].isoformat()
             except (TypeError, ValueError):
                 pass
-
         for t in tasks:
-            if t["task_frequency"] == "daily":
-                t["completed"] = False
-                t["daily_completed"] = t["id"] in daily_cooldowns
-                t["reset_at"] = daily_cooldowns.get(t["id"])
-            else:
-                t["completed"] = t["id"] in completed_ids
-                t["daily_completed"] = False
-                t["reset_at"] = None
+            t["completed"] = t["id"] in completed_ids
         cur.close()
         conn.close()
         return jsonify(tasks)
@@ -1878,34 +2313,14 @@ def check_subscription():
             cur.close()
             conn.close()
             return jsonify({"error": "task not found"}), 404
-        frequency = task.get("task_frequency") or "one_time"
-        reset_hours = int(task.get("reset_hours") or 24)
-        now_utc = datetime.now(timezone.utc)
-
-        if frequency == "daily":
-            cur.execute(
-                """
-                SELECT reset_at FROM daily_task_completions
-                WHERE user_id = %s AND task_id = %s
-                ORDER BY completed_at DESC LIMIT 1
-                """,
-                (user_id, task_id),
-            )
-            row = cur.fetchone()
-            if row and row["reset_at"] and row["reset_at"] > now_utc:
-                cur.close()
-                conn.close()
-                return jsonify({"ok": True, "already_completed": True, "reset_at": row["reset_at"].isoformat()})
-        else:
-            cur.execute(
-                "SELECT 1 FROM task_completions WHERE user_id = %s AND task_id = %s",
-                (user_id, task_id),
-            )
-            if cur.fetchone():
-                cur.close()
-                conn.close()
-                return jsonify({"ok": True, "already_completed": True})
-
+        cur.execute(
+            "SELECT 1 FROM task_completions WHERE user_id = %s AND task_id = %s",
+            (user_id, task_id),
+        )
+        if cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({"ok": True, "already_completed": True})
         channel = task["channel_link"]
         try:
             resp = http_requests.get(
@@ -1923,34 +2338,18 @@ def check_subscription():
             cur.close()
             conn.close()
             return jsonify({"error": "check_failed"}), 500
-
-        if frequency == "daily":
-            reset_at = now_utc + timedelta(hours=reset_hours)
-            cur.execute(
-                "INSERT INTO daily_task_completions (user_id, task_id, completed_at, reset_at) VALUES (%s, %s, %s, %s)",
-                (user_id, task_id, now_utc, reset_at),
-            )
-            cur.execute(
-                "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
-                (task["reward"], user_id),
-            )
-            conn.commit()
-            cur.close()
-            conn.close()
-            return jsonify({"ok": True, "reward": task["reward"], "daily": True, "reset_at": reset_at.isoformat()})
-        else:
-            cur.execute(
-                "INSERT INTO task_completions (user_id, task_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-                (user_id, task_id),
-            )
-            cur.execute(
-                "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
-                (task["reward"], user_id),
-            )
-            conn.commit()
-            cur.close()
-            conn.close()
-            return jsonify({"ok": True, "reward": task["reward"]})
+        cur.execute(
+            "INSERT INTO task_completions (user_id, task_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (user_id, task_id),
+        )
+        cur.execute(
+            "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
+            (task["reward"], user_id),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"ok": True, "reward": task["reward"]})
     except Exception as e:
         logger.error("check_subscription error: %s", e)
         return jsonify({"error": str(e)}), 500
@@ -1978,63 +2377,26 @@ def complete_task():
             cur.close()
             conn.close()
             return jsonify({"error": "use check-subscription endpoint"}), 400
-
-        frequency = task.get("task_frequency") or "one_time"
-        reset_hours = int(task.get("reset_hours") or 24)
-
-        if frequency == "daily":
-            # Check if still in cooldown
-            now_utc = datetime.now(timezone.utc)
-            cur.execute(
-                """
-                SELECT reset_at FROM daily_task_completions
-                WHERE user_id = %s AND task_id = %s
-                ORDER BY completed_at DESC LIMIT 1
-                """,
-                (user_id, task_id),
-            )
-            row = cur.fetchone()
-            if row and row["reset_at"] and row["reset_at"] > now_utc:
-                reset_at_str = row["reset_at"].isoformat()
-                cur.close()
-                conn.close()
-                return jsonify({"ok": True, "already_completed": True, "reset_at": reset_at_str})
-            # Record new daily completion
-            reset_at = now_utc + timedelta(hours=reset_hours)
-            cur.execute(
-                "INSERT INTO daily_task_completions (user_id, task_id, completed_at, reset_at) VALUES (%s, %s, %s, %s)",
-                (user_id, task_id, now_utc, reset_at),
-            )
-            cur.execute(
-                "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
-                (task["reward"], user_id),
-            )
-            conn.commit()
+        cur.execute(
+            "SELECT 1 FROM task_completions WHERE user_id = %s AND task_id = %s",
+            (user_id, task_id),
+        )
+        if cur.fetchone():
             cur.close()
             conn.close()
-            return jsonify({"ok": True, "reward": task["reward"], "daily": True, "reset_at": reset_at.isoformat()})
-        else:
-            # one_time
-            cur.execute(
-                "SELECT 1 FROM task_completions WHERE user_id = %s AND task_id = %s",
-                (user_id, task_id),
-            )
-            if cur.fetchone():
-                cur.close()
-                conn.close()
-                return jsonify({"ok": True, "already_completed": True})
-            cur.execute(
-                "INSERT INTO task_completions (user_id, task_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-                (user_id, task_id),
-            )
-            cur.execute(
-                "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
-                (task["reward"], user_id),
-            )
-            conn.commit()
-            cur.close()
-            conn.close()
-            return jsonify({"ok": True, "reward": task["reward"]})
+            return jsonify({"ok": True, "already_completed": True})
+        cur.execute(
+            "INSERT INTO task_completions (user_id, task_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+            (user_id, task_id),
+        )
+        cur.execute(
+            "UPDATE users SET balance = balance + %s WHERE telegram_id = %s",
+            (task["reward"], user_id),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        return jsonify({"ok": True, "reward": task["reward"]})
     except Exception as e:
         logger.error("complete_task error: %s", e)
         return jsonify({"error": str(e)}), 500
@@ -2775,7 +3137,7 @@ def admin_broadcast_tasks():
                     url,
                     json={
                         "chat_id": uid,
-                        "text": "<tg-emoji emoji-id=\"5282843764451195532\">📋</tg-emoji> <b>Новые задания уже в боте!</b>\n\nСкорее выполни их и зарабатывай лёгкие деньги <tg-emoji emoji-id=\"5287231198098117669\">💰</tg-emoji>",
+                        "text": '<tg-emoji emoji-id="5282843764451195532">📋</tg-emoji> <b>Новые задания уже в боте!</b>\n\nСкорее выполни их и зарабатывай лёгкие деньги <tg-emoji emoji-id="5287231198098117669">💰</tg-emoji>',
                         "parse_mode": "HTML",
                         "reply_markup": {
                             "inline_keyboard": [
@@ -2785,7 +3147,6 @@ def admin_broadcast_tasks():
                                         "web_app": {"url": mini_app_url},
                                         "style": "success",
                                         "icon_custom_emoji_id": "5282843764451195532",
-
                                     }
                                 ]
                             ]
@@ -3033,19 +3394,17 @@ def admin_create_task():
     channel_link = (data.get("channel_link") or "").strip() or None
     button_text = (data.get("button_text") or "").strip() or None
     button_url = (data.get("button_url") or "").strip() or None
-    task_frequency = (data.get("task_frequency") or "one_time").strip()
-    if task_frequency not in ("one_time", "daily"):
-        task_frequency = "one_time"
-    try:
-        reset_hours = int(data.get("reset_hours") or 24)
-        if reset_hours < 1:
-            reset_hours = 1
-    except (TypeError, ValueError):
-        reset_hours = 24
 
     if not name:
         return jsonify({"error": "name is required"}), 400
-    if task_type not in ("video", "subscription", "other", "ad_reward", "ad_popup", "ad_task"):
+    if task_type not in (
+        "video",
+        "subscription",
+        "other",
+        "ad_reward",
+        "ad_popup",
+        "ad_task",
+    ):
         return jsonify({"error": "invalid task_type"}), 400
     try:
         reward = int(reward)
@@ -3101,8 +3460,8 @@ def admin_create_task():
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             """
-            INSERT INTO tasks (name, photo_url, reward, task_type, video_url, channel_link, button_text, button_url, task_frequency, reset_hours)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO tasks (name, photo_url, reward, task_type, video_url, channel_link, button_text, button_url)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
@@ -3114,8 +3473,6 @@ def admin_create_task():
                 channel_link,
                 button_text,
                 button_url,
-                task_frequency,
-                reset_hours,
             ),
         )
         task = dict(cur.fetchone())
@@ -3171,9 +3528,25 @@ def build_subscribe_keyboard(not_subscribed: list) -> InlineKeyboardMarkup:
     for name in not_subscribed:
         username = REQUIRED_CHANNELS[name]
         link = f"https://t.me/{username.lstrip('@')}"
-        buttons.append([InlineKeyboardButton(text=f" {name}", url=link, style="primary", icon_custom_emoji_id="6039422865189638057")])
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=f" {name}",
+                    url=link,
+                    style="primary",
+                    icon_custom_emoji_id="6039422865189638057",
+                )
+            ]
+        )
     buttons.append(
-        [InlineKeyboardButton(text=" Я подписался(ась)", callback_data="check_sub", style="success", icon_custom_emoji_id="5206607081334906820")]
+        [
+            InlineKeyboardButton(
+                text=" Я подписался(ась)",
+                callback_data="check_sub",
+                style="success",
+                icon_custom_emoji_id="5206607081334906820",
+            )
+        ]
     )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -3183,30 +3556,62 @@ def build_menu_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=" Открыть приложение", style="success", icon_custom_emoji_id="5282843764451195532", web_app=WebAppInfo(url=MINI_APP_URL)
+                    text=" Открыть приложение",
+                    style="success",
+                    icon_custom_emoji_id="5282843764451195532",
+                    web_app=WebAppInfo(url=MINI_APP_URL),
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text=" Профиль", style="primary", icon_custom_emoji_id="5197269100878907942", web_app=WebAppInfo(url=MINI_APP_URL + "?section=profile")
+                    text=" Профиль",
+                    style="primary",
+                    icon_custom_emoji_id="5197269100878907942",
+                    web_app=WebAppInfo(url=MINI_APP_URL + "?section=profile"),
                 ),
                 InlineKeyboardButton(
-                    text=" Ивент", style="primary", icon_custom_emoji_id="5462927083132970373", web_app=WebAppInfo(url=MINI_APP_URL + "?section=event")
+                    text=" Ивент",
+                    style="primary",
+                    icon_custom_emoji_id="5462927083132970373",
+                    web_app=WebAppInfo(url=MINI_APP_URL + "?section=event"),
                 ),
                 InlineKeyboardButton(
-                    text=" Задания", style="primary", icon_custom_emoji_id="5193177581888755275", web_app=WebAppInfo(url=MINI_APP_URL + "?section=tasks")
+                    text=" Задания",
+                    style="primary",
+                    icon_custom_emoji_id="5193177581888755275",
+                    web_app=WebAppInfo(url=MINI_APP_URL + "?section=tasks"),
                 ),
             ],
-            [InlineKeyboardButton(text=" Реферальная ссылка", style="success", icon_custom_emoji_id="5271604874419647061", callback_data="referral")],
             [
                 InlineKeyboardButton(
-                    text=" Поддержка", style="danger", icon_custom_emoji_id="5238025132177369293", callback_data="help"
+                    text=" Реферальная ссылка",
+                    style="success",
+                    icon_custom_emoji_id="5271604874419647061",
+                    callback_data="referral",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=" Поддержка",
+                    style="danger",
+                    icon_custom_emoji_id="5238025132177369293",
+                    callback_data="help",
                 ),
                 InlineKeyboardButton(
-                    text=" Инструкция", style="danger", icon_custom_emoji_id="5222444124698853913", callback_data="instruction"
+                    text=" Инструкция",
+                    style="danger",
+                    icon_custom_emoji_id="5222444124698853913",
+                    callback_data="instruction",
                 ),
             ],
-            [InlineKeyboardButton(text=" NodeLink PREMIUM", style="primary", icon_custom_emoji_id="6028338546736107668", callback_data="premium")],
+            [
+                InlineKeyboardButton(
+                    text=" NodeLink PREMIUM",
+                    style="primary",
+                    icon_custom_emoji_id="6028338546736107668",
+                    callback_data="premium",
+                )
+            ],
         ]
     )
 
@@ -3231,6 +3636,169 @@ def upsert_user_db(telegram_id: int, username: str, first_name: str):
         conn.close()
     except Exception as e:
         logger.error("upsert_user_db error: %s", e)
+
+
+def needs_captcha(user_id: int) -> bool:
+    """Return True if user must pass captcha (new user or inactive 7+ days)."""
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT last_active_at FROM users WHERE telegram_id = %s", (user_id,)
+        )
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        if row is None:
+            return True
+        last_active = row["last_active_at"]
+        if last_active is None:
+            return True
+        now = datetime.now(timezone.utc)
+        if last_active.tzinfo is None:
+            last_active = last_active.replace(tzinfo=timezone.utc)
+        return (now - last_active).days >= 7
+    except Exception as e:
+        logger.error("needs_captcha error: %s", e)
+        return False
+
+
+def update_last_active(user_id: int):
+    """Stamp last_active_at = NOW() for the user after captcha pass."""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE users SET last_active_at = NOW() WHERE telegram_id = %s",
+            (user_id,),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logger.error("update_last_active error: %s", e)
+
+
+def build_captcha_keyboard(correct_emoji: str, all_emojis: list) -> InlineKeyboardMarkup:
+    """Build a 3×3 inline keyboard for captcha."""
+    rows = []
+    for i in range(3):
+        row = []
+        for j in range(3):
+            emoji = all_emojis[i * 3 + j]
+            cb = "captcha_ok" if emoji == correct_emoji else "captcha_no"
+            row.append(InlineKeyboardButton(text=emoji, callback_data=cb))
+        rows.append(row)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def send_captcha(
+    bot: Bot, chat_id: int, user_id: int, level: int, inviter_id=None, fails: int = 0
+):
+    """Send a captcha challenge message."""
+    correct = random.choice(CAPTCHA_EMOJIS)
+    others = random.sample([e for e in CAPTCHA_EMOJIS if e != correct], 8)
+    all_emojis = [correct] + others
+    random.shuffle(all_emojis)
+
+    pending_captcha[user_id] = {
+        "level": level,
+        "correct": correct,
+        "all_emojis": all_emojis,
+        "inviter_id": inviter_id,
+        "fails": fails,
+    }
+
+    level_text = f"Уровень {level}/2"
+    fails_text = f"\n⚠️ Неверных попыток: {fails}/{CAPTCHA_MAX_FAILS}" if fails > 0 else ""
+    text = (
+        f"🤖 <b>Подтвердите, что вы не робот</b>\n\n"
+        f"<b>{level_text}</b>{fails_text}\n\n"
+        f"Выберите подходящий эмодзи: <b>{correct}</b>"
+    )
+    await bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        parse_mode="HTML",
+        reply_markup=build_captcha_keyboard(correct, all_emojis),
+    )
+
+
+class CaptchaMiddleware(BaseMiddleware):
+    """Intercept all messages and callbacks — trigger captcha when needed."""
+
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, dict], Awaitable[Any]],
+        event: TelegramObject,
+        data: dict,
+    ) -> Any:
+        user = None
+        chat_id = None
+        bot: Bot = data.get("bot")
+
+        if isinstance(event, Message):
+            user = event.from_user
+            chat_id = event.chat.id
+        elif isinstance(event, CallbackQuery):
+            if event.data and event.data.startswith("captcha_"):
+                return await handler(event, data)
+            user = event.from_user
+            chat_id = event.message.chat.id if event.message else None
+
+        if not user or not chat_id or not bot:
+            return await handler(event, data)
+
+        if user.id in captcha_cooldown:
+            unlock_at = captcha_cooldown[user.id]
+            if time.time() < unlock_at:
+                remaining = int((unlock_at - time.time()) / 60) + 1
+                if isinstance(event, CallbackQuery):
+                    await event.answer(
+                        f"🚫 Капча заблокирована. Попробуйте через {remaining} мин.",
+                        show_alert=True,
+                    )
+                else:
+                    try:
+                        await bot.send_message(
+                            chat_id=chat_id,
+                            text=f"🚫 <b>Вы не прошли капчу.</b>\n\nПопробуйте снова через <b>{remaining} мин.</b>",
+                            parse_mode="HTML",
+                        )
+                    except Exception:
+                        pass
+                return
+            else:
+                captcha_cooldown.pop(user.id, None)
+
+        if user.id in pending_captcha:
+            if isinstance(event, CallbackQuery):
+                await event.answer(
+                    "❗ Сначала пройдите капчу выше.", show_alert=True
+                )
+            return
+
+        if needs_captcha(user.id):
+            inviter_id = None
+            if isinstance(event, Message) and event.text:
+                text_parts = event.text.split(" ", 1)
+                if len(text_parts) > 1 and "/start" in text_parts[0]:
+                    param = text_parts[1].strip()
+                    raw = param[4:] if param.startswith("ref_") else param
+                    try:
+                        inviter_id = int(raw)
+                    except ValueError:
+                        pass
+            if isinstance(event, Message) and event.text and event.text.startswith("/start"):
+                upsert_user_db(
+                    user.id,
+                    user.username or "",
+                    user.first_name or "",
+                )
+            await send_captcha(bot, chat_id, user.id, level=1, inviter_id=inviter_id)
+            return
+
+        return await handler(event, data)
 
 
 def log_user_activity(telegram_id: int):
@@ -3433,9 +4001,13 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot):
     # Check if user is blocked
     is_blocked, block_reason = get_user_block_status(user.id)
     if is_blocked:
-        reason_text = f"\n\n<tg-emoji emoji-id=\"5197269100878907942\">📋</tg-emoji> <b>Причина:</b> {block_reason}" if block_reason else ""
+        reason_text = (
+            f'\n\n<tg-emoji emoji-id="5197269100878907942">📋</tg-emoji> <b>Причина:</b> {block_reason}'
+            if block_reason
+            else ""
+        )
         await message.answer(
-            f"<tg-emoji emoji-id=\"5240241223632954241\">🚫</tg-emoji> <b>Вы заблокированы</b>\n\nВы не можете использовать этого бота.{reason_text}",
+            f'<tg-emoji emoji-id="5240241223632954241">🚫</tg-emoji> <b>Вы заблокированы</b>\n\nВы не можете использовать этого бота.{reason_text}',
             parse_mode="HTML",
         )
         return
@@ -3462,10 +4034,10 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot):
         if inviter_id:
             pending_inviters[user.id] = inviter_id
         text = (
-            "<tg-emoji emoji-id=\"5461130232025078672\">👋</tg-emoji> Привет!\n\n"
+            '<tg-emoji emoji-id="5461130232025078672">👋</tg-emoji> Привет!\n\n'
             "Чтобы использовать бота, нужно подписаться на наши каналы:\n\n"
             + "\n".join(f"• <b>{name}</b>" for name in not_subscribed)
-            + "\n\nПодпишись и нажми кнопку ниже <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>"
+            + '\n\nПодпишись и нажми кнопку ниже <tg-emoji emoji-id="5231102735817918643">👇</tg-emoji>'
         )
         await message.answer(
             text,
@@ -3494,7 +4066,9 @@ async def handle_referral(bot: Bot, inviter_id: int, invitee_user):
         try:
             conn_chk = get_db()
             cur_chk = conn_chk.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur_chk.execute("SELECT status FROM users WHERE telegram_id = %s", (inviter_id,))
+            cur_chk.execute(
+                "SELECT status FROM users WHERE telegram_id = %s", (inviter_id,)
+            )
             inviter_row = cur_chk.fetchone()
             cur_chk.close()
             conn_chk.close()
@@ -3509,13 +4083,15 @@ async def handle_referral(bot: Bot, inviter_id: int, invitee_user):
                 await bot.send_message(
                     chat_id=inviter_id,
                     text=(
-                        f"<tg-emoji emoji-id=\"5456140674028019486\">⚡️</tg-emoji> Пользователь {display} присоединился по твоей ссылке!\n\n"
+                        f'<tg-emoji emoji-id="5456140674028019486">⚡️</tg-emoji> Пользователь {display} присоединился по твоей ссылке!\n\n'
                         f"Ты получишь {coins_text}, как только он пригласит 1 друга."
                     ),
                     parse_mode="HTML",
                 )
             except TelegramAPIError as e:
-                logger.warning("Не удалось уведомить пригласившего %s: %s", inviter_id, e)
+                logger.warning(
+                    "Не удалось уведомить пригласившего %s: %s", inviter_id, e
+                )
 
     # Confirmed notification (mode 1: chain confirmed; mode 0: immediate reward)
     if ref_result.get("confirm_inviter_id"):
@@ -3536,12 +4112,12 @@ async def send_referral_confirmed_notification(bot: Bot, result: dict):
     coins_label = f"+{coins} монет (Premium)" if is_premium else f"+{coins} монет"
     if REFERRAL_MODE == 0:
         join_text = (
-            f"<tg-emoji emoji-id=\"5197474765387864959\">✅</tg-emoji> {display} присоединился по твоей ссылке!\n\n"
+            f'<tg-emoji emoji-id="5197474765387864959">✅</tg-emoji> {display} присоединился по твоей ссылке!\n\n'
             f"Начислено <b>{coins_label}</b> — они уже на твоём балансе. 🎉"
         )
     else:
         join_text = (
-            f"<tg-emoji emoji-id=\"5197474765387864959\">✅</tg-emoji> Реферал подтверждён!\n\n"
+            f'<tg-emoji emoji-id="5197474765387864959">✅</tg-emoji> Реферал подтверждён!\n\n'
             f"{display} пригласил друга.\n"
             f"Начислено <b>{coins_label}</b>."
         )
@@ -3579,10 +4155,10 @@ async def callback_successful_payment(message: Message):
             cur.close()
             conn.close()
             await message.answer(
-                f"<tg-emoji emoji-id=\"6028338546736107668\">🌟</tg-emoji> <b>Premium активирован!</b>\n\n"
-                f"Вы оплатили {payment.total_amount} <tg-emoji emoji-id=\"5951810621887484519\">⭐</tg-emoji> Stars.\n"
+                f'<tg-emoji emoji-id="6028338546736107668">🌟</tg-emoji> <b>Premium активирован!</b>\n\n'
+                f'Вы оплатили {payment.total_amount} <tg-emoji emoji-id="5951810621887484519">⭐</tg-emoji> Stars.\n'
                 f"Ваш статус обновлён до <b>Premium</b> на {PREMIUM_DAYS} дней.\n"
-                f"Наслаждайтесь всеми привилегиями! <tg-emoji emoji-id=\"5235711785482341993\">🎉</tg-emoji>",
+                f'Наслаждайтесь всеми привилегиями! <tg-emoji emoji-id="5235711785482341993">🎉</tg-emoji>',
                 parse_mode="HTML",
             )
         except Exception as e:
@@ -3597,14 +4173,108 @@ async def handle_any_message(message: Message):
     log_user_activity(user.id)
     is_blocked, block_reason = get_user_block_status(user.id)
     if is_blocked:
-        reason_text = f"\n\n<tg-emoji emoji-id=\"5197269100878907942\">📋</tg-emoji> <b>Причина:</b> {block_reason}" if block_reason else ""
+        reason_text = (
+            f'\n\n<tg-emoji emoji-id="5197269100878907942">📋</tg-emoji> <b>Причина:</b> {block_reason}'
+            if block_reason
+            else ""
+        )
         try:
             await message.answer(
-                f"<tg-emoji emoji-id=\"5240241223632954241\">🚫</tg-emoji> <b>Вы заблокированы</b>\n\nВы не можете использовать этого бота.{reason_text}",
+                f'<tg-emoji emoji-id="5240241223632954241">🚫</tg-emoji> <b>Вы заблокированы</b>\n\nВы не можете использовать этого бота.{reason_text}',
                 parse_mode="HTML",
             )
         except Exception:
             pass
+
+
+async def callback_captcha(callback: CallbackQuery, bot: Bot):
+    """Handle captcha button presses."""
+    user = callback.from_user
+    data = callback.data
+    captcha_data = pending_captcha.get(user.id)
+
+    if not captcha_data:
+        await callback.answer("⏰ Капча устарела. Напишите /start чтобы начать заново.", show_alert=True)
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        return
+
+    is_correct = data == "captcha_ok"
+
+    if not is_correct:
+        captcha_data["fails"] = captcha_data.get("fails", 0) + 1
+        fails = captcha_data["fails"]
+
+        if fails >= CAPTCHA_MAX_FAILS:
+            pending_captcha.pop(user.id, None)
+            captcha_cooldown[user.id] = time.time() + CAPTCHA_COOLDOWN_SECONDS
+            await callback.answer("🚫 Вы не прошли капчу. Попробуйте позже.", show_alert=True)
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            await bot.send_message(
+                chat_id=callback.message.chat.id,
+                text="🚫 <b>Вы не прошли капчу.</b>\n\nПопробуйте снова через <b>15 минут</b>.",
+                parse_mode="HTML",
+            )
+            return
+
+        await callback.answer(f"❌ Неверно! Попробуйте снова. (Попытка {fails}/{CAPTCHA_MAX_FAILS})", show_alert=True)
+        level = captcha_data["level"]
+        inviter_id = captcha_data.get("inviter_id")
+        pending_captcha.pop(user.id, None)
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await send_captcha(bot, callback.message.chat.id, user.id, level, inviter_id, fails=fails)
+        return
+
+    level = captcha_data["level"]
+    inviter_id = captcha_data.get("inviter_id")
+
+    if level == 1:
+        await callback.answer("✅ Верно! Переходим к следующему уровню.", show_alert=False)
+        pending_captcha.pop(user.id, None)
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await send_captcha(bot, callback.message.chat.id, user.id, level=2, inviter_id=inviter_id)
+    else:
+        await callback.answer("✅ Проверка пройдена!", show_alert=False)
+        pending_captcha.pop(user.id, None)
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        upsert_user_db(user.id, user.username or "", user.first_name or "")
+        update_last_active(user.id)
+        log_user_activity(user.id)
+
+        not_subscribed = await check_subscriptions(bot, callback.message.chat.id)
+        if not_subscribed:
+            if inviter_id:
+                pending_inviters[user.id] = inviter_id
+            text = (
+                '<tg-emoji emoji-id="5461130232025078672">👋</tg-emoji> Привет!\n\n'
+                "Чтобы использовать бота, нужно подписаться на наши каналы:\n\n"
+                + "\n".join(f"• <b>{name}</b>" for name in not_subscribed)
+                + '\n\nПодпишись и нажми кнопку ниже <tg-emoji emoji-id="5231102735817918643">👇</tg-emoji>'
+            )
+            await bot.send_message(
+                chat_id=callback.message.chat.id,
+                text=text,
+                parse_mode="HTML",
+                reply_markup=build_subscribe_keyboard(not_subscribed),
+            )
+        else:
+            if inviter_id:
+                await handle_referral(bot, inviter_id, user)
+            await send_start_menu(bot, callback.message.chat.id)
 
 
 async def callback_check_sub(callback: CallbackQuery, bot: Bot):
@@ -3613,17 +4283,24 @@ async def callback_check_sub(callback: CallbackQuery, bot: Bot):
 
     is_blocked, block_reason = get_user_block_status(user.id)
     if is_blocked:
-        reason_text = f"\n\n<tg-emoji emoji-id=\"5197269100878907942\">📋</tg-emoji> Причина: {block_reason}" if block_reason else ""
-        await callback.answer(f"<tg-emoji emoji-id=\"5240241223632954241\">🚫</tg-emoji> Вы заблокированы.{reason_text}", show_alert=True)
+        reason_text = (
+            f'\n\n<tg-emoji emoji-id="5197269100878907942">📋</tg-emoji> Причина: {block_reason}'
+            if block_reason
+            else ""
+        )
+        await callback.answer(
+            f'<tg-emoji emoji-id="5240241223632954241">🚫</tg-emoji> Вы заблокированы.{reason_text}',
+            show_alert=True,
+        )
         return
 
     not_subscribed = await check_subscriptions(bot, user.id)
 
     if not_subscribed:
         text = (
-            "<tg-emoji emoji-id=\"5465665476971471368\">❌</tg-emoji> Ты ещё не подписан(а) на:\n\n"
+            '<tg-emoji emoji-id="5465665476971471368">❌</tg-emoji> Ты ещё не подписан(а) на:\n\n'
             + "\n".join(f"• <b>{name}</b>" for name in not_subscribed)
-            + "\n\nПодпишись и попробуй снова <tg-emoji emoji-id=\"5231102735817918643\">👇</tg-emoji>"
+            + '\n\nПодпишись и попробуй снова <tg-emoji emoji-id="5231102735817918643">👇</tg-emoji>'
         )
         await callback.answer("Подписка не найдена.", show_alert=True)
         await callback.message.edit_text(
@@ -3642,23 +4319,78 @@ async def callback_check_sub(callback: CallbackQuery, bot: Bot):
 
 
 def back_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=" Назад", callback_data="back_to_menu", icon_custom_emoji_id="5960671702059848143")]
-    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=" Назад",
+                    callback_data="back_to_menu",
+                    icon_custom_emoji_id="5960671702059848143",
+                )
+            ]
+        ]
+    )
+
 
 def premium_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=" Оформить NodeLink PREMIUM", callback_data="get_premium", icon_custom_emoji_id="5440841102871517055", style="success")],
-        [InlineKeyboardButton(text=" Назад", callback_data="back_to_menu", icon_custom_emoji_id="5960671702059848143")]
-    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=" Оформить NodeLink PREMIUM",
+                    callback_data="get_premium",
+                    icon_custom_emoji_id="5440841102871517055",
+                    style="success",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=" Назад",
+                    callback_data="back_to_menu",
+                    icon_custom_emoji_id="5960671702059848143",
+                )
+            ],
+        ]
+    )
+
 
 def premium_buy_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=" Telegram Stars", callback_data="telegram_stars_pay", icon_custom_emoji_id="5438496463044752972", style="success")],
-        [InlineKeyboardButton(text=" CryptoPay", callback_data="crypto_pay", icon_custom_emoji_id="5361543877599724417", style="primary")],
-        [InlineKeyboardButton(text=" Ручная оплата", url="https://t.me/s_narzimurodov", callback_data="admin_pay", icon_custom_emoji_id="5445353829304387411", style="danger")],
-        [InlineKeyboardButton(text=" Назад", callback_data="premium", icon_custom_emoji_id="5960671702059848143")]
-    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=" Telegram Stars",
+                    callback_data="telegram_stars_pay",
+                    icon_custom_emoji_id="5438496463044752972",
+                    style="success",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=" CryptoPay",
+                    callback_data="crypto_pay",
+                    icon_custom_emoji_id="5361543877599724417",
+                    style="primary",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=" Ручная оплата",
+                    url="https://t.me/s_narzimurodov",
+                    callback_data="admin_pay",
+                    icon_custom_emoji_id="5445353829304387411",
+                    style="danger",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=" Назад",
+                    callback_data="premium",
+                    icon_custom_emoji_id="5960671702059848143",
+                )
+            ],
+        ]
+    )
 
 
 async def callback_instruction(callback: CallbackQuery):
@@ -3669,21 +4401,22 @@ async def callback_instruction(callback: CallbackQuery):
         pass
     referral_line = (
         '<tg-emoji emoji-id="5769289093221454192">🔗</tg-emoji> Когда человек перейдёт по твоей ссылке, ты <b>сразу получишь 5 монет</b> на баланс!\n\n'
-        if REFERRAL_MODE == 0 else
-        '<tg-emoji emoji-id="5769289093221454192">🔗</tg-emoji> Когда человек перейдёт по твоей ссылке <b>и пригласит своего друга,</b> ты получишь <b>5 монеты,</b> которые можно потратить в магазине.\n\n'
+        if REFERRAL_MODE == 0
+        else '<tg-emoji emoji-id="5769289093221454192">🔗</tg-emoji> Когда человек перейдёт по твоей ссылке <b>и пригласит своего друга,</b> ты получишь <b>5 монеты,</b> которые можно потратить в магазине.\n\n'
     )
     await callback.message.answer(
         '<tg-emoji emoji-id="5287684458881756303">🤖</tg-emoji> В этом боте ты можешь зарабатывать коины на <b>HolyWorld Lite,</b>просто приглашая друзей или выполняя лёгкие задания!\n\n'
         '<tg-emoji emoji-id="5271604874419647061">🔗</tg-emoji> <b>Как пригласить друга и получить монеты?</b>\n\n'
         '<tg-emoji emoji-id="5886583490434044162">👆</tg-emoji> Нажми кнопку <b>«Реферальная ссылка»</b> в меню бота (/menu).\n'
         '<tg-emoji emoji-id="6037622221625626773">➡️</tg-emoji> Отправь свою ссылку друзьям или размещай её в группах и каналах.\n'
-        + referral_line +
-        '<tg-emoji emoji-id="5334882760735598374">📝</tg-emoji> <b>Как получить монеты за выполнение заданий?</b>\n\n'
+        + referral_line
+        + '<tg-emoji emoji-id="5334882760735598374">📝</tg-emoji> <b>Как получить монеты за выполнение заданий?</b>\n\n'
         '<tg-emoji emoji-id="5884106131822875141">👆</tg-emoji> Нажми кнопку <b>«Задания»</b> в меню (/menu).\n'
         '<tg-emoji emoji-id="6033070647213560346">🪟</tg-emoji> В открывшемся приложении выполняй задания и моментально получай монеты на свой баланс.',
         parse_mode="HTML",
         reply_markup=back_keyboard(),
     )
+
 
 async def callback_help(callback: CallbackQuery):
     await callback.answer()
@@ -3707,7 +4440,9 @@ async def callback_referral(callback: CallbackQuery, bot: Bot):
 
     with get_db() as conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT referral_count FROM users WHERE telegram_id = %s", (user.id,))
+        cur.execute(
+            "SELECT referral_count FROM users WHERE telegram_id = %s", (user.id,)
+        )
         row = cur.fetchone()
         referral_count = row["referral_count"] if row else 0
 
@@ -3719,8 +4454,8 @@ async def callback_referral(callback: CallbackQuery, bot: Bot):
         "Рефералы - это ваши друзья, приглашённые в бота через эту ссылку. "
         + (
             "Каждый приглашённый друг сразу принесёт вам +5 монет к балансу!"
-            if REFERRAL_MODE == 0 else
-            "Каждый новый реферал который пригласил своего реферала принесет вам +5 монет к балансу!"
+            if REFERRAL_MODE == 0
+            else "Каждый новый реферал который пригласил своего реферала принесет вам +5 монет к балансу!"
         )
     )
 
@@ -3739,8 +4474,7 @@ async def callback_premium(callback: CallbackQuery):
         pass
     await callback.message.answer(
         '<tg-emoji emoji-id="5188481279963715781">🚀</tg-emoji> <b><u>NodeLink Premium — окупи подписку за один вечер!</u></b>\n'
-        '<b>Представь: ты платишь всего 99 рублей за месяц и уже через 10 приглашённых друзей полностью возвращаешь эти деньги и выходишь в плюс!</b>\n\n'
-
+        "<b>Представь: ты платишь всего 99 рублей за месяц и уже через 10 приглашённых друзей полностью возвращаешь эти деньги и выходишь в плюс!</b>\n\n"
         '<b><tg-emoji emoji-id="5217822164362739968">👑</tg-emoji> Что даёт Premium:</b>\n'
         '<b><tg-emoji emoji-id="5258354775757439405">➡️</tg-emoji>10 монет вместо 5 за каждого друга (а дальше — по 7.5 монет)</b>\n'
         '<b><tg-emoji emoji-id="5258354775757439405">➡️</tg-emoji>+50% к награде за все задания</b>\n'
@@ -3748,17 +4482,17 @@ async def callback_premium(callback: CallbackQuery):
         '<b><tg-emoji emoji-id="5258354775757439405">➡️</tg-emoji>Красивая премиум-звезда перед именем (видно в ивенте и в списке друзей)</b>\n'
         '<b><tg-emoji emoji-id="5258354775757439405">➡️</tg-emoji>Кастомный тег в общем чате NodeLink</b>\n'
         '<b><tg-emoji emoji-id="5258354775757439405">➡️</tg-emoji>Полностью без рекламы — ничего не отвлекает от заработка</b>\n\n'
-
         '<b><tg-emoji emoji-id="5438496463044752972">⭐️</tg-emoji> А теперь самое вкусное:</b>\n'
         '<b>Многие пользователи приглашают 15+ рефералов в день! <tg-emoji emoji-id="5298822893923216866">😮</tg-emoji></b>\n'
         '<b>Это значит — ты не просто окупаешь подписку, а начинаешь зарабатывать гораздо больше, чем обычные юзеры. <tg-emoji emoji-id="5231200819986047254">📊</tg-emoji></b>\n'
-        '<b>99 рублей → 10 друзей = подписка уже окупилась</b>\n'
+        "<b>99 рублей → 10 друзей = подписка уже окупилась</b>\n"
         '<b><tg-emoji emoji-id="5424972470023104089">🔥</tg-emoji> А дальше — чистая прибыль + куча приятных бонусов каждый день.</b>\n'
         '<b>Хватит зарабатывать меньше, чем мог бы! <tg-emoji emoji-id="5231005931550030290">💸</tg-emoji></b>\n'
         '<b><tg-emoji emoji-id="5451882707875276247">🕯</tg-emoji> Переходи на новый уровень прямо сейчас и начинай получать максимум от NodeLink.</b>\n',
         parse_mode="HTML",
         reply_markup=premium_keyboard(),
     )
+
 
 async def callback_buy_premium(callback: CallbackQuery):
     await callback.answer()
@@ -3783,18 +4517,26 @@ async def callback_stars_pay(callback: CallbackQuery, bot: Bot):
             description=f"Премиум на {PREMIUM_DAYS} дней — все привилегии и бонусы!",
             payload=f"premium_stars_{user_id}",
             currency="XTR",
-            prices=[LabeledPrice(label=f"Premium {PREMIUM_DAYS} дней", amount=PREMIUM_PRICE_STARS)],
+            prices=[
+                LabeledPrice(
+                    label=f"Premium {PREMIUM_DAYS} дней", amount=PREMIUM_PRICE_STARS
+                )
+            ],
         )
     except Exception as e:
         logger.error("callback_stars_pay error: %s", e)
-        await callback.message.answer("<tg-emoji emoji-id=\"5465665476971471368\">❌</tg-emoji> Ошибка при создании счёта, попробуйте позже.")
+        await callback.message.answer(
+            '<tg-emoji emoji-id="5465665476971471368">❌</tg-emoji> Ошибка при создании счёта, попробуйте позже.'
+        )
 
 
 async def callback_crypto_pay(callback: CallbackQuery):
     await callback.answer()
     user_id = callback.from_user.id
     if not CRYPTO_PAY_TOKEN:
-        await callback.message.answer("<tg-emoji emoji-id=\"5465665476971471368\">❌</tg-emoji> CryptoPay не найден, обратитесь в поддержку.")
+        await callback.message.answer(
+            '<tg-emoji emoji-id="5465665476971471368">❌</tg-emoji> CryptoPay не найден, обратитесь в поддержку.'
+        )
         return
     try:
         payload = f"premium_crypto_{user_id}"
@@ -3818,20 +4560,32 @@ async def callback_crypto_pay(callback: CallbackQuery):
         if result.get("ok"):
             invoice = result["result"]
             pay_url = invoice.get("pay_url") or invoice.get("bot_invoice_url")
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="<tg-emoji emoji-id=\"5427168083074628963\">💎</tg-emoji> Оплатить через CryptoBot", url=pay_url)]
-            ])
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text='<tg-emoji emoji-id="5427168083074628963">💎</tg-emoji> Оплатить через CryptoBot',
+                            url=pay_url,
+                        )
+                    ]
+                ]
+            )
             await callback.message.answer(
-                f'<tg-emoji emoji-id=\"5427168083074628963\">💎</tg-emoji> <b>Счёт создан!</b>\n\nСумма: <b>{PREMIUM_PRICE_USDT} USDT</b>\nНажмите кнопку ниже для оплаты.',
+                f'<tg-emoji emoji-id="5427168083074628963">💎</tg-emoji> <b>Счёт создан!</b>\n\nСумма: <b>{PREMIUM_PRICE_USDT} USDT</b>\nНажмите кнопку ниже для оплаты.',
                 parse_mode="HTML",
                 reply_markup=kb,
             )
         else:
             err = result.get("error", {})
-            await callback.message.answer(f"<tg-emoji emoji-id=\"5465665476971471368\">❌</tg-emoji> Ошибка CryptoPay: {err.get('message', 'Неизвестная ошибка')}")
+            await callback.message.answer(
+                f'<tg-emoji emoji-id="5465665476971471368">❌</tg-emoji> Ошибка CryptoPay: {err.get("message", "Неизвестная ошибка")}'
+            )
     except Exception as e:
         logger.error("callback_crypto_pay error: %s", e)
-        await callback.message.answer("<tg-emoji emoji-id=\"5465665476971471368\">❌</tg-emoji> Ошибка соединения с CryptoPay, попробуйте позже.")
+        await callback.message.answer(
+            '<tg-emoji emoji-id="5465665476971471368">❌</tg-emoji> Ошибка соединения с CryptoPay, попробуйте позже.'
+        )
+
 
 async def callback_back_to_menu(callback: CallbackQuery, bot: Bot):
     await callback.answer()
@@ -3841,14 +4595,21 @@ async def callback_back_to_menu(callback: CallbackQuery, bot: Bot):
         pass
     await send_menu(bot, callback.message.chat.id)
 
+
 async def cmd_menu(message: Message, bot: Bot):
     await send_menu(bot, message.chat.id)
 
 
 async def cmd_app(message: Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Открыть приложение", web_app=WebAppInfo(url=MINI_APP_URL))]
-    ])
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Открыть приложение", web_app=WebAppInfo(url=MINI_APP_URL)
+                )
+            ]
+        ]
+    )
     await message.answer(
         '<tg-emoji emoji-id="5282843764451195532">📱</tg-emoji> Нажми кнопку ниже, чтобы открыть приложение:',
         parse_mode="HTML",
@@ -3857,9 +4618,16 @@ async def cmd_app(message: Message):
 
 
 async def cmd_shop(message: Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Открыть Магазин", web_app=WebAppInfo(url=MINI_APP_URL + "?section=shop"))]
-    ])
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Открыть Магазин",
+                    web_app=WebAppInfo(url=MINI_APP_URL + "?section=shop"),
+                )
+            ]
+        ]
+    )
     await message.answer(
         '<tg-emoji emoji-id="5208573502046610594">🏪</tg-emoji> Нажми кнопку ниже, чтобы открыть Магазин:',
         parse_mode="HTML",
@@ -3868,9 +4636,16 @@ async def cmd_shop(message: Message):
 
 
 async def cmd_tasks(message: Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Открыть Задания", web_app=WebAppInfo(url=MINI_APP_URL + "?section=tasks"))]
-    ])
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Открыть Задания",
+                    web_app=WebAppInfo(url=MINI_APP_URL + "?section=tasks"),
+                )
+            ]
+        ]
+    )
     await message.answer(
         '<tg-emoji emoji-id="5193177581888755275">📝</tg-emoji> Нажми кнопку ниже, чтобы открыть Задания:',
         parse_mode="HTML",
@@ -3879,9 +4654,16 @@ async def cmd_tasks(message: Message):
 
 
 async def cmd_event(message: Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Открыть Ивент", web_app=WebAppInfo(url=MINI_APP_URL + "?section=event"))]
-    ])
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Открыть Ивент",
+                    web_app=WebAppInfo(url=MINI_APP_URL + "?section=event"),
+                )
+            ]
+        ]
+    )
     await message.answer(
         '<tg-emoji emoji-id="5462927083132970373">🎉</tg-emoji> Нажми кнопку ниже, чтобы открыть Ивент:',
         parse_mode="HTML",
@@ -3895,7 +4677,9 @@ async def cmd_invite(message: Message, bot: Bot):
 
     with get_db() as conn:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute("SELECT referral_count FROM users WHERE telegram_id = %s", (user.id,))
+        cur.execute(
+            "SELECT referral_count FROM users WHERE telegram_id = %s", (user.id,)
+        )
         row = cur.fetchone()
         referral_count = row["referral_count"] if row else 0
 
@@ -3907,8 +4691,8 @@ async def cmd_invite(message: Message, bot: Bot):
         "Рефералы - это ваши друзья, приглашённые в бота через эту ссылку. "
         + (
             "Каждый приглашённый друг сразу принесёт вам +5 монет к балансу!"
-            if REFERRAL_MODE == 0 else
-            "Каждый новый реферал который пригласил своего реферала принесет вам +5 монет к балансу!"
+            if REFERRAL_MODE == 0
+            else "Каждый новый реферал который пригласил своего реферала принесет вам +5 монет к балансу!"
         )
     )
     await message.answer(text, parse_mode="HTML", reply_markup=back_keyboard())
@@ -3917,7 +4701,7 @@ async def cmd_invite(message: Message, bot: Bot):
 async def cmd_premium(message: Message):
     await message.answer(
         '<tg-emoji emoji-id="5188481279963715781">🚀</tg-emoji> <b><u>NodeLink Premium — окупи подписку за один вечер!</u></b>\n'
-        '<b>Представь: ты платишь всего 99 рублей за месяц и уже через 10 приглашённых друзей полностью возвращаешь эти деньги и выходишь в плюс!</b>\n\n'
+        "<b>Представь: ты платишь всего 99 рублей за месяц и уже через 10 приглашённых друзей полностью возвращаешь эти деньги и выходишь в плюс!</b>\n\n"
         '<b><tg-emoji emoji-id="5217822164362739968">👑</tg-emoji> Что даёт Premium:</b>\n'
         '<b><tg-emoji emoji-id="5258354775757439405">➡️</tg-emoji>10 монет вместо 5 за каждого друга (а дальше — по 7.5 монет)</b>\n'
         '<b><tg-emoji emoji-id="5258354775757439405">➡️</tg-emoji>+50% к награде за все задания</b>\n'
@@ -3928,7 +4712,7 @@ async def cmd_premium(message: Message):
         '<b><tg-emoji emoji-id="5438496463044752972">⭐️</tg-emoji> А теперь самое вкусное:</b>\n'
         '<b>Многие пользователи приглашают 15+ рефералов в день! <tg-emoji emoji-id="5298822893923216866">😮</tg-emoji></b>\n'
         '<b>Это значит — ты не просто окупаешь подписку, а начинаешь зарабатывать гораздо больше, чем обычные юзеры. <tg-emoji emoji-id="5231200819986047254">📊</tg-emoji></b>\n'
-        '<b>99 рублей → 10 друзей = подписка уже окупилась</b>\n'
+        "<b>99 рублей → 10 друзей = подписка уже окупилась</b>\n"
         '<b><tg-emoji emoji-id="5424972470023104089">🔥</tg-emoji> А дальше — чистая прибыль + куча приятных бонусов каждый день.</b>\n'
         '<b>Хватит зарабатывать меньше, чем мог бы! <tg-emoji emoji-id="5231005931550030290">💸</tg-emoji></b>\n'
         '<b><tg-emoji emoji-id="5451882707875276247">🕯</tg-emoji> Переходи на новый уровень прямо сейчас и начинай получать максимум от NodeLink.</b>\n',
@@ -3945,10 +4729,10 @@ async def cmd_instruction(message: Message):
         '<tg-emoji emoji-id="6037622221625626773">➡️</tg-emoji> Отправь свою ссылку друзьям или размещай её в группах и каналах.\n'
         + (
             '<tg-emoji emoji-id="5769289093221454192">🔗</tg-emoji> Когда человек перейдёт по твоей ссылке, ты <b>сразу получишь 5 монет</b> на баланс!\n\n'
-            if REFERRAL_MODE == 0 else
-            '<tg-emoji emoji-id="5769289093221454192">🔗</tg-emoji> Когда человек перейдёт по твоей ссылке <b>и пригласит своего друга,</b> ты получишь <b>5 монеты,</b> которые можно потратить в магазине.\n\n'
-        ) +
-        '<tg-emoji emoji-id="5334882760735598374">📝</tg-emoji> <b>Как получить монеты за выполнение заданий?</b>\n\n'
+            if REFERRAL_MODE == 0
+            else '<tg-emoji emoji-id="5769289093221454192">🔗</tg-emoji> Когда человек перейдёт по твоей ссылке <b>и пригласит своего друга,</b> ты получишь <b>5 монеты,</b> которые можно потратить в магазине.\n\n'
+        )
+        + '<tg-emoji emoji-id="5334882760735598374">📝</tg-emoji> <b>Как получить монеты за выполнение заданий?</b>\n\n'
         '<tg-emoji emoji-id="5884106131822875141">👆</tg-emoji> Нажми кнопку <b>«Задания»</b> в меню (/menu).\n'
         '<tg-emoji emoji-id="6033070647213560346">🪟</tg-emoji> В открывшемся приложении выполняй задания и моментально получай монеты на свой баланс.',
         parse_mode="HTML",
@@ -4035,6 +4819,9 @@ async def run_bot():
 
     await asyncio.sleep(2)
 
+    dp.message.middleware(CaptchaMiddleware())
+    dp.callback_query.middleware(CaptchaMiddleware())
+
     dp.message.register(cmd_start, CommandStart())
     dp.message.register(cmd_menu, Command("menu"))
     dp.message.register(cmd_app, Command("app"))
@@ -4045,6 +4832,7 @@ async def run_bot():
     dp.message.register(cmd_premium, Command("premium"))
     dp.message.register(cmd_instruction, Command("instruction"))
     dp.message.register(cmd_help, Command("help"))
+    dp.callback_query.register(callback_captcha, F.data.in_({"captcha_ok", "captcha_no"}))
     dp.callback_query.register(callback_check_sub, F.data == "check_sub")
     dp.callback_query.register(callback_instruction, F.data == "instruction")
     dp.callback_query.register(callback_help, F.data == "help")
