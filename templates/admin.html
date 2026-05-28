@@ -1808,7 +1808,7 @@
 
             <div class="form-group">
                 <label class="form-label"><i class="fa-solid fa-coins" style="color:#fdcb6e"></i> Награда (монеты)</label>
-                <input type="number" class="form-input" id="task-reward-input" placeholder="Например: 50" min="0">
+                <input type="number" class="form-input" id="task-reward-input" placeholder="Например: 0.5" min="0" step="0.01">
             </div>
 
             <div class="form-group">
@@ -3343,7 +3343,7 @@
         async function doCreateTask() {
             const name = document.getElementById('task-name-input').value.trim();
             const photoUrl = document.getElementById('task-photo-input').value.trim();
-            const reward = parseInt(document.getElementById('task-reward-input').value) || 0;
+            const reward = parseFloat(document.getElementById('task-reward-input').value) || 0;
             const taskType = document.getElementById('task-type-select').value;
             const videoUrl = document.getElementById('task-video-url-input').value.trim();
             const channelLink = document.getElementById('task-channel-input').value.trim();
