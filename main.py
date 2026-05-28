@@ -598,7 +598,7 @@ def init_db():
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             photo_url TEXT,
-            reward INTEGER NOT NULL DEFAULT 0,
+            reward REAL NOT NULL DEFAULT 0,
             task_type TEXT NOT NULL DEFAULT 'other',
             video_url TEXT,
             channel_link TEXT,
@@ -3406,7 +3406,7 @@ def admin_create_task():
     ):
         return jsonify({"error": "invalid task_type"}), 400
     try:
-        reward = int(reward)
+        reward = float(reward)
         if reward < 0:
             reward = 0
     except (TypeError, ValueError):
