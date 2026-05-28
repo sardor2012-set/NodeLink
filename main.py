@@ -120,7 +120,7 @@ CAPTCHA_EMOJIS = [
     "🦭", "🦒", "🦓", "🦏", "🦛", "🐘", "🐪", "🐫", "🦘",
 ]
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='tamplates', static_folder='static')
 CORS(app)
 
 _bot_app = None
