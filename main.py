@@ -3788,7 +3788,7 @@ class CaptchaMiddleware(BaseMiddleware):
                 await event.answer(
                     "❗ Сначала пройдите капчу выше.", show_alert=True
                 )
-                else:
+            else:
                 # User sent a text message while captcha is pending — resend captcha
                 # (covers cases where original captcha was lost, bot restarted, or scrolled away)
                 captcha_state = pending_captcha[user.id]
