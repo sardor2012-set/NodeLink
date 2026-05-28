@@ -604,6 +604,8 @@ def init_db():
             channel_link TEXT,
             button_text TEXT,
             button_url TEXT,
+            task_frequency TEXT NOT NULL DEFAULT 'one_time',
+            reset_hours INTEGER NOT NULL DEFAULT 24,
             is_active BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMPTZ DEFAULT NOW()
         )
@@ -3393,6 +3395,15 @@ def admin_create_task():
     channel_link = (data.get("channel_link") or "").strip() or None
     button_text = (data.get("button_text") or "").strip() or None
     button_url = (data.get("button_url") or "").strip() or None
+    task_frequency = (data.get("task_frequency") or "one_time").strip()
+    if task_frequency not in ("one_time", "daily"):
+        task_frequency = "one_time"
+    try:
+        reset_hours = int(data.get("reset_hours", 24))
+        if reset_hours < 1:
+            reset_hours = 24
+    except (TypeError, ValueError):
+        reset_hours = 24
 
     if not name:
         return jsonify({"error": "name is required"}), 400
@@ -3459,8 +3470,8 @@ def admin_create_task():
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
             """
-            INSERT INTO tasks (name, photo_url, reward, task_type, video_url, channel_link, button_text, button_url)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO tasks (name, photo_url, reward, task_type, video_url, channel_link, button_text, button_url, task_frequency, reset_hours)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
@@ -3472,6 +3483,8 @@ def admin_create_task():
                 channel_link,
                 button_text,
                 button_url,
+                task_frequency,
+                reset_hours,
             ),
         )
         task = dict(cur.fetchone())
