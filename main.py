@@ -3788,6 +3788,18 @@ class CaptchaMiddleware(BaseMiddleware):
                 await event.answer(
                     "❗ Сначала пройдите капчу выше.", show_alert=True
                 )
+                else:
+                # User sent a text message while captcha is pending — resend captcha
+                # (covers cases where original captcha was lost, bot restarted, or scrolled away)
+                captcha_state = pending_captcha[user.id]
+                await send_captcha(
+                    bot,
+                    chat_id,
+                    user.id,
+                    level=captcha_state.get("level", 1),
+                    inviter_id=captcha_state.get("inviter_id"),
+                    fails=captcha_state.get("fails", 0),
+                )
             return
 
         if needs_captcha(user.id):
