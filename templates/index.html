@@ -4924,6 +4924,15 @@
                 document.getElementById("profile-status").textContent =
                     currentStatus;
 
+                // Update name with premium star badge
+                const premStar = currentStatus === "Premium"
+                    ? ' <img src="/static/star.png" style="width:16px;height:16px;vertical-align:middle;margin-left:3px;object-fit:contain;">'
+                    : "";
+                const safeFirstName = (firstName || "Пользователь").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+                const safeFullName = fullName.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+                document.getElementById("header-name").innerHTML = safeFirstName + premStar;
+                document.getElementById("profile-hero-name").innerHTML = safeFullName + premStar;
+
                 const nickEl = document.getElementById("header-nick");
                 const profileNick =
                     document.getElementById("profile-card-nick");
@@ -6049,7 +6058,7 @@
                             return `<div class="leaderboard-card ${cardClass}">
                     <div class="leaderboard-avatar" id="ev-avatar-${u.telegram_id}" style="background:${color}">${escHtml(initial)}</div>
                     <div class="leaderboard-info">
-                        <div class="leaderboard-username">${escHtml(name)}${escHtml(username)}</div>
+                        <div class="leaderboard-username">${escHtml(name)}${escHtml(username)}${u.status === "Premium" ? ' <img src="/static/star.png" style="width:14px;height:14px;vertical-align:middle;margin-left:2px;object-fit:contain;">' : ""}</div>
                         <div class="leaderboard-sub">👥 ${refs} приглашений</div>
                     </div>
                     ${rankHtml}
