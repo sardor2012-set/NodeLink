@@ -476,6 +476,10 @@ def init_db():
     cur.execute("""
         ALTER TABLE users ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ
     """)
+    cur.execute("""
+        ALTER TABLE users ALTER COLUMN balance TYPE NUMERIC(12,4)
+        USING balance::NUMERIC(12,4)
+    """)
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS weekly_events (
@@ -2412,7 +2416,7 @@ def adsgram_reward_webhook():
     """
     user_id = request.args.get("user_id")
     try:
-        reward_amount = int(request.args.get("reward", 5))
+        reward_amount = float(request.args.get("reward", 5))
         if reward_amount <= 0:
             reward_amount = 5
     except (TypeError, ValueError):
