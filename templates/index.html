@@ -4910,23 +4910,29 @@
                 loadProducts("all");
             }
 
+            function fmtBalance(val) {
+                const n = parseFloat(val);
+                if (isNaN(n)) return 0;
+                return parseFloat(n.toFixed(4));
+            }
+
             function updateUserUI(data) {
                 currentBalance = data.balance || 0;
                 currentNick = data.nick || "";
                 currentStatus = data.status || "Игрок";
                 currentPremiumUntil = data.premium_until || null;
 
-                document.getElementById("balance").textContent = currentBalance;
+                document.getElementById("balance").textContent = fmtBalance(currentBalance);
                 document.getElementById("status-text").textContent =
                     currentStatus;
                 document.getElementById("profile-balance").textContent =
-                    currentBalance;
+                    fmtBalance(currentBalance);
                 document.getElementById("profile-status").textContent =
                     currentStatus;
 
                 // Update name with premium star badge
                 const premStar = currentStatus === "Premium"
-                    ? ' <img src="/static/star.png" style="width:20px;height:20px;vertical-align:sub;object-fit:contain;">'
+                    ? ' <img src="/static/star.png" style="width:16px;height:16px;vertical-align:middle;margin-left:3px;object-fit:contain;">'
                     : "";
                 const safeFirstName = (firstName || "Пользователь").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
                 const safeFullName = fullName.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
@@ -5273,7 +5279,7 @@
                 document.getElementById("modal-final-price").textContent =
                     final + " монет";
                 document.getElementById("modal-balance").textContent =
-                    currentBalance + " монет";
+                    fmtBalance(currentBalance) + " монет";
             }
 
             function closeBuyModal() {
@@ -5373,11 +5379,11 @@
                     if (data.success) {
                         currentBalance = data.new_balance;
                         document.getElementById("balance").textContent =
-                            currentBalance;
+                            fmtBalance(currentBalance);
                         document.getElementById("profile-balance").textContent =
-                            currentBalance;
+                            fmtBalance(currentBalance);
                         document.getElementById("modal-balance").textContent =
-                            currentBalance + " монет";
+                            fmtBalance(currentBalance) + " монет";
                         const productName = selectedProduct.name;
                         const paidAmount = data.paid;
                         closeBuyModal();
@@ -5443,9 +5449,9 @@
                     if (data.success) {
                         currentBalance = data.new_balance;
                         document.getElementById("balance").textContent =
-                            currentBalance;
+                            fmtBalance(currentBalance);
                         document.getElementById("profile-balance").textContent =
-                            currentBalance;
+                            fmtBalance(currentBalance);
                         msgEl.className = "promo-msg success";
                         msgEl.textContent = "✓ " + data.message;
                         document.getElementById("promo-code-input").value = "";
@@ -5961,11 +5967,11 @@
                         document
                             .querySelectorAll("[data-balance-display]")
                             .forEach((el) => {
-                                el.textContent = data.balance;
+                                el.textContent = fmtBalance(data.balance);
                             });
                         const balEl =
                             document.getElementById("profile-balance");
-                        if (balEl) balEl.textContent = data.balance;
+                        if (balEl) balEl.textContent = fmtBalance(data.balance);
                     }
                 } catch (e) {}
             }
@@ -6478,14 +6484,14 @@
                         if (newBalance !== currentBalance) {
                             currentBalance = newBalance;
                             document.getElementById("balance").textContent =
-                                newBalance;
+                                fmtBalance(newBalance);
                             document.getElementById(
                                 "profile-balance",
-                            ).textContent = newBalance;
+                            ).textContent = fmtBalance(newBalance);
                             const modalBal =
                                 document.getElementById("modal-balance");
                             if (modalBal)
-                                modalBal.textContent = newBalance + " монет";
+                                modalBal.textContent = fmtBalance(newBalance) + " монет";
                         }
                     }
                     if (data.status && data.status !== currentStatus) {
