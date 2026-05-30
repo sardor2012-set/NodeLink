@@ -48,7 +48,9 @@ DATABASE_URL = os.getenv(
 
 REQUIRED_CHANNELS = {
     "NodeLink news": "@NodeLink_news",
-    "Bedrich": "@bedrich_tgk"
+    "Барыга ggttyy0732": "@barigaggttyy0732",
+    "GameDrop": "@GameDrop_best",
+    "Пингвиненок ХВ": "@pingvinenok_xd"
 }
 
 # Referral mode:
