@@ -2281,19 +2281,47 @@ def get_tasks():
         for t in tasks:
             if t.get("created_at"):
                 t["created_at"] = t["created_at"].isoformat()
-        completed_ids = set()
+
+        completions = {}
+        uid = None
         if user_id:
             try:
                 uid = int(user_id)
                 cur.execute(
-                    "SELECT task_id FROM task_completions WHERE user_id = %s",
+                    "SELECT task_id, completed_at FROM task_completions WHERE user_id = %s",
                     (uid,),
                 )
-                completed_ids = {row["task_id"] for row in cur.fetchall()}
+                completions = {row["task_id"]: row["completed_at"] for row in cur.fetchall()}
             except (TypeError, ValueError):
                 pass
+
+        now = datetime.now(timezone.utc)
+        expired_task_ids = []
         for t in tasks:
-            t["completed"] = t["id"] in completed_ids
+            tid = t["id"]
+            t["completed"] = False
+            t["daily_completed"] = False
+            t["reset_at"] = None
+            if tid in completions:
+                completed_at = completions[tid]
+                if t.get("task_frequency") == "daily":
+                    reset_hours = t.get("reset_hours") or 24
+                    reset_at = completed_at + timedelta(hours=reset_hours)
+                    if now < reset_at:
+                        t["daily_completed"] = True
+                        t["reset_at"] = reset_at.isoformat()
+                    else:
+                        expired_task_ids.append(tid)
+                else:
+                    t["completed"] = True
+
+        if expired_task_ids and uid is not None:
+            cur.execute(
+                "DELETE FROM task_completions WHERE user_id = %s AND task_id = ANY(%s)",
+                (uid, expired_task_ids),
+            )
+            conn.commit()
+
         cur.close()
         conn.close()
         return jsonify(tasks)
