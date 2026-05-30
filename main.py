@@ -50,7 +50,8 @@ REQUIRED_CHANNELS = {
     "NodeLink news": "@NodeLink_news",
     "Барыга ggttyy0732": "@barigaggttyy0732",
     "GameDrop": "@GameDrop_best",
-    "Пингвиненок ХВ": "@pingvinenok_xd"
+    "Пингвиненок ХВ": "@pingvinenok_xd",
+    "OMLETIK22 HOLYWORLD": "@omletik22"
 }
 
 # Referral mode:
