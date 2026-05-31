@@ -521,6 +521,145 @@
             margin: 18px 0 14px;
         }
 
+        /* ===== REJECT ORDER MODAL ===== */
+        .reject-modal-box {
+            background: white;
+            padding: 26px;
+            border-radius: 22px;
+            width: 100%;
+            max-width: 460px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+            animation: modalIn 0.28s cubic-bezier(0.34,1.56,0.64,1);
+        }
+        .reject-modal-title {
+            font-size: 1.1em;
+            font-weight: 800;
+            color: #1a1a2e;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .reject-modal-title i { color: var(--danger); }
+        .reject-modal-sub { font-size: 0.82em; color: #888; margin-bottom: 18px; }
+        .reject-quick-btns {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .reject-quick-btn {
+            flex: 1;
+            padding: 11px 8px;
+            border-radius: 14px;
+            border: none;
+            font-size: 0.85em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.18s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .reject-quick-btn.no-reason {
+            background: #f7f8fc;
+            color: #555;
+            border: 1.5px solid #e0e7ef;
+        }
+        .reject-quick-btn.no-reason:hover { background: #edf0f7; }
+        .reject-quick-btn.with-reason {
+            background: linear-gradient(135deg, var(--danger), var(--danger-dark));
+            color: white;
+            box-shadow: 0 3px 10px rgba(214,48,49,0.25);
+        }
+        .reject-quick-btn.with-reason:hover { opacity: 0.88; }
+        .reject-reason-section { display: none; }
+        .reject-reason-section.show { display: block; }
+        .reject-templates-label {
+            font-size: 0.78em;
+            font-weight: 700;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 8px;
+        }
+        .reject-template-btns {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 14px;
+        }
+        .reject-template-btn {
+            padding: 10px 14px;
+            border-radius: 12px;
+            border: 1.5px solid #e0e7ef;
+            background: #f7f8fc;
+            color: #444;
+            font-size: 0.8em;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: left;
+            line-height: 1.4;
+            transition: all 0.18s;
+        }
+        .reject-template-btn:hover,
+        .reject-template-btn.selected {
+            border-color: var(--danger);
+            background: rgba(214,48,49,0.06);
+            color: var(--danger);
+        }
+        .reject-reason-textarea {
+            width: 100%;
+            padding: 11px 14px;
+            border: 2px solid #edf2f7;
+            border-radius: 12px;
+            font-size: 0.88em;
+            color: #333;
+            resize: vertical;
+            min-height: 80px;
+            outline: none;
+            font-family: inherit;
+            transition: border-color 0.2s;
+            box-sizing: border-box;
+        }
+        .reject-reason-textarea:focus { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(214,48,49,0.09); }
+        .reject-modal-footer {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        .reject-modal-footer .btn-submit-reject {
+            flex: 1;
+            padding: 11px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(135deg, var(--danger), var(--danger-dark));
+            color: white;
+            font-size: 0.9em;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            box-shadow: 0 3px 10px rgba(214,48,49,0.25);
+            transition: opacity 0.18s;
+        }
+        .reject-modal-footer .btn-submit-reject:hover { opacity: 0.88; }
+        .reject-modal-footer .btn-cancel-reject {
+            padding: 11px 18px;
+            border-radius: 12px;
+            border: 1.5px solid #e0e7ef;
+            background: #f7f8fc;
+            color: #666;
+            font-size: 0.9em;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .reject-modal-footer .btn-cancel-reject:hover { background: #edf0f7; }
+
         /* ===== DELETE MODAL ===== */
         .confirm-modal-box {
             background: white;
@@ -1684,6 +1823,47 @@
         </div>
     </div>
 
+    <!-- ===== REJECT ORDER MODAL ===== -->
+    <div class="modal-overlay" id="reject-order-modal">
+        <div class="reject-modal-box">
+            <div class="reject-modal-title"><i class="fa-solid fa-circle-xmark"></i> Отклонить заказ</div>
+            <div class="reject-modal-sub" id="reject-modal-sub">Заказ будет отклонён, монеты возвращены пользователю.</div>
+
+            <div class="reject-quick-btns">
+                <button class="reject-quick-btn no-reason" onclick="submitRejectOrder(false)">
+                    <i class="fa-solid fa-xmark"></i> Без причины
+                </button>
+                <button class="reject-quick-btn with-reason" onclick="showRejectReasonSection()">
+                    <i class="fa-solid fa-comment-dots"></i> С причиной
+                </button>
+            </div>
+
+            <div class="reject-reason-section" id="reject-reason-section">
+                <div class="reject-templates-label">Шаблоны</div>
+                <div class="reject-template-btns">
+                    <button class="reject-template-btn" onclick="selectRejectTemplate(this, 0)">
+                        📋 Нету заявки на бирже. Нужно поставить заявку на бирже с курсом 13 монет. Подробнее вам должны были написать после покупки — пожалуйста обращайте на это внимание, иначе мы не сможем выполнить заказ.
+                    </button>
+                    <button class="reject-template-btn" onclick="selectRejectTemplate(this, 1)">
+                        🚫 Вы использовали баг.
+                    </button>
+                </div>
+                <div class="reject-templates-label" style="margin-top:4px;">Или введите вручную</div>
+                <textarea class="reject-reason-textarea" id="reject-reason-textarea" placeholder="Введите причину отмены..."></textarea>
+                <div class="reject-modal-footer">
+                    <button class="btn-submit-reject" onclick="submitRejectOrder(true)">
+                        <i class="fa-solid fa-circle-xmark"></i> Отклонить с причиной
+                    </button>
+                    <button class="btn-cancel-reject" onclick="closeRejectModal()">Отмена</button>
+                </div>
+            </div>
+
+            <div id="reject-no-reason-cancel" style="margin-top:4px;text-align:center;">
+                <button onclick="closeRejectModal()" style="background:none;border:none;color:#aaa;font-size:0.82em;cursor:pointer;font-weight:600;">Отмена</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ===== BROADCAST CONFIRM MODAL ===== -->
     <div class="modal-overlay" id="broadcast-confirm-modal">
         <div class="confirm-modal-box">
@@ -2241,15 +2421,60 @@
             }
         }
 
-        async function rejectOrder(orderId) {
-            if (!confirm('Отклонить заказ #' + orderId + '? Монеты будут возвращены пользователю.')) return;
+        let _rejectOrderId = null;
+
+        const REJECT_TEMPLATES = [
+            'Нету заявки на бирже. Нужно поставить заявку на бирже с курсом 13 монет. Подробнее вам должны были написать после покупки — пожалуйста обращайте на это внимание, иначе мы не сможем выполнить заказ.',
+            'Вы использовали баг.'
+        ];
+
+        function rejectOrder(orderId) {
+            _rejectOrderId = orderId;
+            document.getElementById('reject-modal-sub').textContent = 'Заказ #' + orderId + ' будет отклонён, монеты возвращены пользователю.';
+            document.getElementById('reject-reason-section').classList.remove('show');
+            document.getElementById('reject-no-reason-cancel').style.display = 'block';
+            document.getElementById('reject-reason-textarea').value = '';
+            document.querySelectorAll('.reject-template-btn').forEach(b => b.classList.remove('selected'));
+            document.getElementById('reject-order-modal').classList.add('open');
+        }
+
+        function closeRejectModal() {
+            document.getElementById('reject-order-modal').classList.remove('open');
+            _rejectOrderId = null;
+        }
+
+        function showRejectReasonSection() {
+            document.getElementById('reject-reason-section').classList.add('show');
+            document.getElementById('reject-no-reason-cancel').style.display = 'none';
+        }
+
+        function selectRejectTemplate(btn, idx) {
+            document.querySelectorAll('.reject-template-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            document.getElementById('reject-reason-textarea').value = REJECT_TEMPLATES[idx];
+        }
+
+        async function submitRejectOrder(withReason) {
+            const orderId = _rejectOrderId;
+            if (!orderId) return;
+            let reason = '';
+            if (withReason) {
+                reason = document.getElementById('reject-reason-textarea').value.trim();
+                if (!reason) {
+                    showToast('Введите причину или выберите шаблон.', 'error');
+                    return;
+                }
+            }
+            closeRejectModal();
             const card = document.getElementById('order-card-' + orderId);
             if (card) card.style.opacity = '0.5';
             try {
+                const body = { admin_id: Number(adminId) };
+                if (reason) body.reason = reason;
                 const res = await fetch('/api/admin/order/' + orderId + '/reject', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ admin_id: Number(adminId) })
+                    body: JSON.stringify(body)
                 });
                 const d = await res.json();
                 if (!res.ok || !d.ok) {
