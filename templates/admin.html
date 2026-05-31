@@ -6,6 +6,7 @@
     <title>NodeLink — Админ Панель</title>
     <script src="https://kit.fontawesome.com/44e8c440b6.js" crossorigin="anonymous"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', -apple-system, sans-serif; }
         :root {
@@ -846,6 +847,118 @@
             .mgmt-grid { grid-template-columns: repeat(2, 1fr); }
         }
 
+        /* ===== CHARTS SECTION ===== */
+        .charts-card {
+            background: rgba(255,255,255,0.97);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(108,92,231,0.10);
+            padding: 22px 20px 18px;
+            margin-bottom: 20px;
+        }
+        .charts-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+        .charts-title {
+            font-size: 1.05em;
+            font-weight: 800;
+            color: #1a1a2e;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .charts-title i { color: var(--primary); }
+        .chart-metric-tabs {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .chart-metric-btn {
+            padding: 6px 13px;
+            border-radius: 20px;
+            border: 1.5px solid #e0e7ef;
+            background: #f7f8fc;
+            color: #888;
+            font-size: 0.78em;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.18s;
+        }
+        .chart-metric-btn.active {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: #fff;
+            border-color: transparent;
+            box-shadow: 0 3px 10px rgba(108,92,231,0.25);
+        }
+        .chart-type-row {
+            display: flex;
+            gap: 6px;
+            justify-content: flex-end;
+            margin-bottom: 14px;
+        }
+        .chart-type-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            border: 1.5px solid #e0e7ef;
+            background: #f7f8fc;
+            color: #aaa;
+            font-size: 0.9em;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.18s;
+        }
+        .chart-type-btn.active {
+            background: linear-gradient(135deg, var(--primary), var(--primary-light));
+            color: #fff;
+            border-color: transparent;
+            box-shadow: 0 3px 10px rgba(108,92,231,0.2);
+        }
+        .chart-type-btn:hover:not(.active) { border-color: var(--primary); color: var(--primary); }
+        .chart-wrap {
+            position: relative;
+            width: 100%;
+            height: 260px;
+        }
+        .chart-wrap canvas { border-radius: 12px; }
+        .chart-summary-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 14px;
+            flex-wrap: wrap;
+        }
+        .chart-summary-item {
+            flex: 1;
+            min-width: 90px;
+            background: #f7f8fc;
+            border-radius: 12px;
+            padding: 10px 12px;
+            text-align: center;
+        }
+        .chart-summary-val {
+            font-size: 1.3em;
+            font-weight: 800;
+            color: #1a1a2e;
+            display: block;
+        }
+        .chart-summary-lbl {
+            font-size: 0.72em;
+            color: #888;
+            font-weight: 600;
+            margin-top: 2px;
+            display: block;
+        }
+        @media (max-width: 600px) {
+            .chart-wrap { height: 200px; }
+            .charts-header { flex-direction: column; align-items: flex-start; }
+        }
+
         /* ===== PROMO CODES ===== */
         .promo-header-row {
             display: flex;
@@ -1275,6 +1388,30 @@
                 <span class="stat-value" id="stat-peak-online">—</span>
                 <span class="stat-label">Пик онлайна</span>
             </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-card" id="charts-section">
+            <div class="charts-header">
+                <div class="charts-title">
+                    <i class="fa-solid fa-chart-line"></i> Аналитика
+                </div>
+                <div class="chart-metric-tabs">
+                    <button class="chart-metric-btn active" onclick="setChartMetric('registrations', this)">Регистрации</button>
+                    <button class="chart-metric-btn" onclick="setChartMetric('completions', this)">Задания</button>
+                    <button class="chart-metric-btn" onclick="setChartMetric('referrals', this)">Рефералы</button>
+                    <button class="chart-metric-btn" onclick="setChartMetric('audience', this)">Аудитория</button>
+                </div>
+            </div>
+            <div class="chart-type-row" id="chart-type-row">
+                <button class="chart-type-btn active" onclick="setChartType('line', this)" title="Линейный"><i class="fa-solid fa-chart-line"></i></button>
+                <button class="chart-type-btn" onclick="setChartType('bar', this)" title="Столбчатый"><i class="fa-solid fa-chart-bar"></i></button>
+                <button class="chart-type-btn" onclick="setChartType('doughnut', this)" title="Круговой"><i class="fa-solid fa-chart-pie"></i></button>
+            </div>
+            <div class="chart-wrap">
+                <canvas id="main-chart"></canvas>
+            </div>
+            <div class="chart-summary-row" id="chart-summary-row"></div>
         </div>
 
         <!-- Pending orders -->
@@ -1960,7 +2097,7 @@
                 document.getElementById('promo-section').style.display = 'block';
                 loadModerators();
                 loadPromoCodes();
-                await Promise.all([loadStats(), loadOrders(), loadCompletedOrders(), loadUsers()]);
+                await Promise.all([loadStats(), loadCharts(), loadOrders(), loadCompletedOrders(), loadUsers()]);
             } else {
                 document.getElementById('stats-section').style.display = 'none';
                 document.getElementById('users-section').style.display = 'none';
@@ -2229,6 +2366,168 @@
             } catch(e) {
                 console.error('loadStats error', e);
             }
+        }
+
+        // ===== CHARTS =====
+        let _chartData = null;
+        let _chartInstance = null;
+        let _chartMetric = 'registrations';
+        let _chartType = 'line';
+
+        const CHART_COLORS = {
+            registrations: { border: '#6c5ce7', bg: 'rgba(108,92,231,0.13)', point: '#6c5ce7' },
+            completions:   { border: '#00b894', bg: 'rgba(0,184,148,0.13)',  point: '#00b894' },
+            referrals:     { border: '#0984e3', bg: 'rgba(9,132,227,0.13)',  point: '#0984e3' },
+        };
+
+        const METRIC_LABELS = {
+            registrations: 'Новые пользователи',
+            completions:   'Выполнения заданий',
+            referrals:     'Рефералы',
+        };
+
+        async function loadCharts() {
+            try {
+                const res = await fetch('/api/admin/charts?admin_id=' + adminId);
+                if (!res.ok) return;
+                _chartData = await res.json();
+                renderChart();
+            } catch(e) { console.error('loadCharts error', e); }
+        }
+
+        function renderChart() {
+            if (!_chartData) return;
+            const canvas = document.getElementById('main-chart');
+            const typeRow = document.getElementById('chart-type-row');
+            const summaryRow = document.getElementById('chart-summary-row');
+
+            if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
+
+            if (_chartMetric === 'audience') {
+                typeRow.style.display = 'none';
+                _renderAudienceChart(canvas, summaryRow);
+            } else {
+                typeRow.style.display = 'flex';
+                _renderTimeSeriesChart(canvas, summaryRow);
+            }
+        }
+
+        function _renderTimeSeriesChart(canvas, summaryRow) {
+            const col = CHART_COLORS[_chartMetric];
+            const data = _chartData[_chartMetric] || [];
+            const labels = _chartData.labels || [];
+            const total = data.reduce((a, b) => a + b, 0);
+            const maxVal = Math.max(...data, 1);
+            const avgVal = data.length ? (total / data.length).toFixed(1) : 0;
+
+            const isDonut = _chartType === 'doughnut';
+            const chartType = isDonut ? 'doughnut' : _chartType;
+
+            if (isDonut) {
+                const nonZero = data.filter(v => v > 0);
+                const donutLabels = labels.filter((_, i) => data[i] > 0);
+                const palette = ['#6c5ce7','#00b894','#0984e3','#e17055','#fdcb6e','#fd79a8','#00cec9','#a29bfe','#55efc4','#fab1a0'];
+                _chartInstance = new Chart(canvas, {
+                    type: 'doughnut',
+                    data: {
+                        labels: donutLabels.length ? donutLabels : ['Нет данных'],
+                        datasets: [{ data: nonZero.length ? nonZero : [1], backgroundColor: palette.slice(0, Math.max(nonZero.length, 1)), borderWidth: 2, borderColor: '#fff', hoverOffset: 8 }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11, weight: '600' }, padding: 10 } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw}` } } }, cutout: '60%' }
+                });
+            } else {
+                const gradient = canvas.getContext('2d').createLinearGradient(0, 0, 0, 260);
+                gradient.addColorStop(0, col.bg.replace('0.13', '0.35'));
+                gradient.addColorStop(1, col.bg.replace('0.13', '0.02'));
+
+                _chartInstance = new Chart(canvas, {
+                    type: chartType,
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: METRIC_LABELS[_chartMetric],
+                            data,
+                            borderColor: col.border,
+                            backgroundColor: chartType === 'line' ? gradient : col.bg.replace('0.13', '0.7'),
+                            borderWidth: chartType === 'line' ? 2.5 : 0,
+                            pointBackgroundColor: col.point,
+                            pointRadius: chartType === 'line' ? 3 : 0,
+                            pointHoverRadius: 6,
+                            fill: chartType === 'line',
+                            tension: 0.42,
+                            borderRadius: chartType === 'bar' ? 6 : 0,
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1a1a2e', titleFont: { size: 12, weight: '700' }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 10, callbacks: { title: items => items[0].label, label: ctx => ` ${ctx.parsed.y}` } } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 10 }, color: '#aaa' }, border: { display: false } },
+                            y: { grid: { color: 'rgba(0,0,0,0.05)', drawBorder: false }, ticks: { font: { size: 10 }, color: '#aaa', precision: 0 }, border: { display: false }, beginAtZero: true }
+                        }
+                    }
+                });
+            }
+
+            summaryRow.innerHTML = `
+                <div class="chart-summary-item"><span class="chart-summary-val">${total}</span><span class="chart-summary-lbl">Всего за 30 дней</span></div>
+                <div class="chart-summary-item"><span class="chart-summary-val">${maxVal}</span><span class="chart-summary-lbl">Максимум за день</span></div>
+                <div class="chart-summary-item"><span class="chart-summary-val">${avgVal}</span><span class="chart-summary-lbl">Среднее в день</span></div>
+            `;
+        }
+
+        function _renderAudienceChart(canvas, summaryRow) {
+            if (_chartInstance) { _chartInstance.destroy(); _chartInstance = null; }
+            const st = _chartData.user_status || {};
+            const ac = _chartData.user_activity || {};
+            const palette = ['#6c5ce7', '#00b894', '#0984e3', '#fdcb6e', '#e17055', '#fd79a8'];
+
+            _chartInstance = new Chart(canvas, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Обычные', 'Премиум', 'Активны сегодня', 'Активны 7 дней', 'Неактивны'],
+                    datasets: [{
+                        data: [
+                            Math.max(0, (st.regular || 0) - (st.premium || 0)),
+                            st.premium || 0,
+                            ac.active_today || 0,
+                            Math.max(0, (ac.active_7d || 0) - (ac.active_today || 0)),
+                            ac.inactive || 0
+                        ],
+                        backgroundColor: palette,
+                        borderWidth: 2,
+                        borderColor: '#fff',
+                        hoverOffset: 8
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11, weight: '600' }, padding: 10 } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw}` } } },
+                    cutout: '55%'
+                }
+            });
+
+            const total = (st.regular || 0) + (st.premium || 0);
+            summaryRow.innerHTML = `
+                <div class="chart-summary-item"><span class="chart-summary-val">${total}</span><span class="chart-summary-lbl">Всего пользователей</span></div>
+                <div class="chart-summary-item"><span class="chart-summary-val">${st.premium || 0}</span><span class="chart-summary-lbl">Премиум</span></div>
+                <div class="chart-summary-item"><span class="chart-summary-val">${ac.active_today || 0}</span><span class="chart-summary-lbl">Активны сегодня</span></div>
+                <div class="chart-summary-item"><span class="chart-summary-val">${ac.active_7d || 0}</span><span class="chart-summary-lbl">Активны 7 дней</span></div>
+            `;
+        }
+
+        function setChartMetric(metric, btn) {
+            _chartMetric = metric;
+            document.querySelectorAll('.chart-metric-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderChart();
+        }
+
+        function setChartType(type, btn) {
+            _chartType = type;
+            document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderChart();
         }
 
         async function loadUsers() {
