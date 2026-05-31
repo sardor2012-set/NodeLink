@@ -47,11 +47,8 @@ DATABASE_URL = os.getenv(
 )
 
 REQUIRED_CHANNELS = {
-    "NodeLink news": "@NodeLink_news",
-    "Барыга ggttyy0732": "@barigaggttyy0732",
-    "GameDrop": "@GameDrop_best",
-    "Пингвиненок ХВ": "@pingvinenok_xd",
-    "OMLETIK22 HOLYWORLD": "@omletik22"
+    "NodeLink news": {"username": "@NodeLink_news", "link": "https://t.me/NodeLink_news"},
+    "rbxget": {"username": "@realrbxget", "link": "https://t.me/+X8ImrC1QnJo3YmVi"},
 }
 
 # Referral mode:
@@ -3559,7 +3556,8 @@ def admin_delete_task(task_id):
 
 async def check_subscriptions(bot: Bot, user_id: int) -> list:
     not_subscribed = []
-    for name, username in REQUIRED_CHANNELS.items():
+    for name, channel in REQUIRED_CHANNELS.items():
+        username = channel["username"]
         try:
             member = await bot.get_chat_member(chat_id=username, user_id=user_id)
             if member.status in ("left", "kicked", "banned"):
@@ -3573,8 +3571,7 @@ async def check_subscriptions(bot: Bot, user_id: int) -> list:
 def build_subscribe_keyboard(not_subscribed: list) -> InlineKeyboardMarkup:
     buttons = []
     for name in not_subscribed:
-        username = REQUIRED_CHANNELS[name]
-        link = f"https://t.me/{username.lstrip('@')}"
+        link = REQUIRED_CHANNELS[name]["link"]
         buttons.append(
             [
                 InlineKeyboardButton(
