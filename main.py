@@ -2635,6 +2635,90 @@ def admin_stats():
         logger.error("admin_stats error: %s", e)
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/admin/charts")
+def admin_charts():
+    admin_id = request.args.get("admin_id")
+    err = require_admin_or_mod(admin_id)
+    if err:
+        return err
+    try:
+        conn = get_db()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("""
+            SELECT DATE(created_at AT TIME ZONE 'UTC') AS day, COUNT(*) AS cnt
+            FROM users
+            WHERE created_at >= NOW() - INTERVAL '30 days'
+            GROUP BY day ORDER BY day
+        """)
+        reg_rows = {str(r["day"]): int(r["cnt"]) for r in cur.fetchall()}
+        cur.execute("""
+            SELECT DATE(completed_at AT TIME ZONE 'UTC') AS day, COUNT(*) AS cnt
+            FROM task_completions
+            WHERE completed_at >= NOW() - INTERVAL '30 days'
+            GROUP BY day ORDER BY day
+        """)
+        comp_rows = {str(r["day"]): int(r["cnt"]) for r in cur.fetchall()}
+        cur.execute("""
+            SELECT DATE(joined_at AT TIME ZONE 'UTC') AS day, COUNT(*) AS cnt
+            FROM referrals
+            WHERE joined_at >= NOW() - INTERVAL '30 days'
+            GROUP BY day ORDER BY day
+        """)
+        ref_rows = {str(r["day"]): int(r["cnt"]) for r in cur.fetchall()}
+        cur.execute("""
+            SELECT
+                SUM(CASE WHEN status = 'Premium' AND premium_until > NOW() THEN 1 ELSE 0 END) AS premium,
+                SUM(CASE WHEN status != 'Premium' OR premium_until IS NULL OR premium_until <= NOW() THEN 1 ELSE 0 END) AS regular
+            FROM users
+        """)
+        status_row = cur.fetchone()
+        cur.execute("""
+            SELECT
+                COUNT(DISTINCT ua.user_id) AS active_today
+            FROM user_activity ua
+            WHERE ua.activity_date = CURRENT_DATE
+        """)
+        active_today = cur.fetchone()["active_today"]
+        cur.execute("""
+            SELECT COUNT(DISTINCT user_id) AS cnt
+            FROM user_activity
+            WHERE activity_date >= CURRENT_DATE - INTERVAL '6 days'
+        """)
+        active_7d = cur.fetchone()["cnt"]
+        cur.execute("SELECT COUNT(*) AS cnt FROM users")
+        total_u = cur.fetchone()["cnt"]
+        cur.close()
+        conn.close()
+        from datetime import date, timedelta
+        labels = []
+        today = date.today()
+        for i in range(29, -1, -1):
+            labels.append(str(today - timedelta(days=i)))
+        registrations = [reg_rows.get(d, 0) for d in labels]
+        completions = [comp_rows.get(d, 0) for d in labels]
+        referrals_daily = [ref_rows.get(d, 0) for d in labels]
+        short_labels = [(today - timedelta(days=29-i)).strftime("%d.%m") for i in range(30)]
+        inactive = max(0, int(total_u) - int(active_7d))
+        return jsonify({
+            "labels": short_labels,
+            "registrations": registrations,
+            "completions": completions,
+            "referrals": referrals_daily,
+            "user_status": {
+                "premium": int(status_row["premium"] or 0),
+                "regular": int(status_row["regular"] or 0),
+            },
+            "user_activity": {
+                "active_today": int(active_today),
+                "active_7d": int(active_7d),
+                "inactive": inactive,
+            }
+        })
+    except Exception as e:
+        logger.error("admin_charts error: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
 
 @app.route("/api/admin/users")
 def admin_users():
