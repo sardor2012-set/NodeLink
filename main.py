@@ -49,6 +49,7 @@ DATABASE_URL = os.getenv(
 REQUIRED_CHANNELS = {
     "NodeLink news": {"username": "@NodeLink_news", "link": "https://t.me/NodeLink_news"},
     "rbxget": {"username": "@realrbxget", "link": "https://t.me/+X8ImrC1QnJo3YmVi"},
+    "Барыга ggttyy0732": {"username": "@barigaggttyy0732", "link": "https://t.me/barigaggttyy0732"},
 }
 
 # Referral mode:
